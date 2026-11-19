@@ -133,5 +133,36 @@ foreach ($c in $fxcases) {
   if ($j.state -ne 'fertig') { $j.error | Tee-Object -FilePath $Out -Append; throw "Video mit Effekt $($c.name) fehlgeschlagen" }
   if (($j.meta.notes -join ' ') -match 'einfache Tiefensch') { throw 'Tiefen-KI lief nicht (einfache Schätzung benutzt)' }
 }
+# ---- 1.6.0: Shorts-Helfer (beste Stelle) + Songtext (Whisper light) ----
+& $ff -v error -y -f lavfi -i "sine=f=220:d=20" -f lavfi -i "sine=f=330:d=20" -f lavfi -i "anoisesrc=d=20:a=0.05" -filter_complex "[0][1][2]amix=3,volume='if(between(mod(t,10),5,9),2.2,0.6)':eval=frame" -ac 2 -b:a 192k "$work\aufbau.mp3"
+$hs = Stage "$work\aufbau.mp3" 'audio'
+$hj = Invoke-RestMethod -Method Post -Uri "$base/api/highlight" -Headers $h -ContentType 'application/json' -Body (@{ audio = $hs; length = 15; lyrics = $false } | ConvertTo-Json)
+for ($i = 0; $i -lt 120; $i++) { Start-Sleep -Milliseconds 500; $hr = Invoke-RestMethod "$base/api/highlight/$($hj.id)" -Headers $h; if (@('fertig', 'fehler') -contains $hr.state) { break } }
+"Beste Stelle: $($hr.state) $($hr.error) – $(($hr.result.suggestions | ForEach-Object { '{0} {1}-{2}' -f $_.name, $_.start, $_.end }) -join ' | ')" | Tee-Object -FilePath $Out -Append
+if ($hr.state -ne 'fertig' -or $hr.result.suggestions.Count -lt 1) { throw 'Stellensuche fehlgeschlagen' }
+$ls = Invoke-RestMethod "$base/api/lyrics/status" -Headers $h
+"Songtext: Bibliothek $($ls.lib) $($ls.error)" | Tee-Object -FilePath $Out -Append
+if (-not $ls.lib) { throw 'Songtext-Erkennung (faster-whisper) fehlt im Programm' }
+Invoke-RestMethod -Method Post -Uri "$base/api/lyrics/download" -Headers $h -ContentType 'application/json' -Body '{}' | Out-Null
+for ($i = 0; $i -lt 300; $i++) { Start-Sleep -Seconds 1; $ls = Invoke-RestMethod "$base/api/lyrics/status" -Headers $h; if ($ls.download.state -ne 'running') { break } }
+"Songtext-Modell: $($ls.download.state) $($ls.download.error) (Modell da: $($ls.model))" | Tee-Object -FilePath $Out -Append
+if (-not $ls.model) { throw 'Songtext-Modell konnte nicht geladen werden' }
+$tts = $false
+try {
+  Add-Type -AssemblyName System.Speech
+  $sp = New-Object System.Speech.Synthesis.SpeechSynthesizer
+  $sp.SetOutputToWaveFile("$work\gesang.wav")
+  $sp.Speak('I will love you forever. Hold me tonight. I will love you forever. Hold me tonight. The city lights are cold and grey. I will love you forever. Hold me tonight.')
+  $sp.Dispose(); $tts = $true
+} catch { "Sprachausgabe nicht verfügbar: $_" | Tee-Object -FilePath $Out -Append }
+if ($tts) {
+  $gs = Stage "$work\gesang.wav" 'audio'
+  $t0 = Get-Date
+  $hj = Invoke-RestMethod -Method Post -Uri "$base/api/highlight" -Headers $h -ContentType 'application/json' -Body (@{ audio = $gs; length = 15; lyrics = $true } | ConvertTo-Json)
+  for ($i = 0; $i -lt 600; $i++) { Start-Sleep -Milliseconds 500; $hr = Invoke-RestMethod "$base/api/highlight/$($hj.id)" -Headers $h; if (@('fertig', 'fehler') -contains $hr.state) { break } }
+  "Mit Songtext: $($hr.state) $($hr.error) – $($hr.result.lines) Zeilen, Sprache $($hr.result.language), $([math]::Round(((Get-Date) - $t0).TotalSeconds)) s" | Tee-Object -FilePath $Out -Append
+  foreach ($sg in $hr.result.suggestions) { "  $($sg.name): $($sg.start)-$($sg.end) „$($sg.lyric)“" | Tee-Object -FilePath $Out -Append }
+  if ($hr.state -ne 'fertig' -or $hr.result.lines -lt 1) { throw 'Songtext-Erkennung hat nichts erkannt' }
+}
 Stop-Process -Id $p.Id -Force
 'SMOKE OK' | Tee-Object -FilePath $Out -Append

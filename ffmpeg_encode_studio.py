@@ -10,19 +10,22 @@ from pathlib import Path
 
 import viz
 import fx
+import highlight
+import lyrics
 try:
     import mark          # braucht numpy + OpenCV (+ onnxruntime für die KI)
 except Exception:  # noqa: BLE001
     mark = None
 
 APP_NAME = 'ffmpeg_encode Studio'
-VERSION = '1.5.0'
+APP_DIRNAME = 'ffmpeg_encode Studio'      # Ordnername für Einstellungen/Videos bleibt (deine Daten bleiben erhalten)
+VERSION = '1.6.0'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 UI = BASE / 'ui'
 APP_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
-HOME = Path(os.environ.get('APPDATA') or Path.home() / '.config') / 'ffmpeg_encode Studio'
+HOME = Path(os.environ.get('APPDATA') or Path.home() / '.config') / APP_DIRNAME
 STAGE = Path(tempfile.mkdtemp(prefix='ffmpeg-encode-studio-'))
 CONFIG_FILE = HOME / 'config.json'
 NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
@@ -36,6 +39,9 @@ MODEL_DIR = next((d for d in (APP_DIR / 'models', BASE / 'models', Path(__file__
 SAM = mark.Sam(MODEL_DIR) if mark and mark.cv2 is not None else None
 DEPTH = fx.Depth(MODEL_DIR) if fx.cv2 is not None else None
 GPU = []           # erkannte Grafikkarten [{name, vram, vendor}]
+LYRICS = lyrics.Lyrics(HOME / 'models' / ('whisper-' + lyrics.MODEL_NAME))
+HL_JOBS = {}       # Stellensuche: id -> {state, percent, phase, result, error}
+HL_CACHE = {}      # (Song-Pfad, mtime) -> Analyse bzw. Songtext
 
 # Zielformate (Breite, Höhe, Hochformat?)
 FORMATS = {
@@ -81,7 +87,7 @@ TRANS_IDS = {t[1] for t in TRANSITIONS} | {'none'}
 
 DEFAULTS = {'fmt': 'yt4k', 'fps': 30, 'fadeIn': 2.0, 'fadeOut': 3.0, 'color': 'black', 'target': 'av', 'fit': 'blur',
             'enc': 'auto', 'quality': '18', 'start': '0:00', 'end': '',
-            'transIn': 'fade', 'transOut': 'fade'}
+            'transIn': 'fade', 'transOut': 'fade', 'shortLen': 60, 'shortLyrics': False}
 DEFAULTS.update(viz.DEFAULTS)
 DEFAULTS.update(fx.DEFAULTS)
 
@@ -151,7 +157,7 @@ def default_outdir():
                 ctypes.windll.ole32.CoTaskMemFree(p)
         except Exception:  # noqa: BLE001
             pass
-    return str(base / APP_NAME)
+    return str(base / APP_DIRNAME)
 
 
 def to_sec(t):
@@ -275,6 +281,13 @@ def clean_settings(s):
     if str(out['quality']) not in QUALITY:
         out['quality'] = '18'
     out['quality'] = str(out['quality'])
+    try:
+        out['shortLen'] = int(out['shortLen'])
+    except (TypeError, ValueError):
+        out['shortLen'] = 60
+    if out['shortLen'] not in highlight.LENGTHS:
+        out['shortLen'] = 60
+    out['shortLyrics'] = bool(out['shortLyrics'])
     viz.clean(s, out)
     fx.clean(s, out)
     # Markierungen aus einer früheren Sitzung (Maske nicht mehr vorhanden) zurücksetzen
@@ -876,6 +889,40 @@ def gpu_view():
     return {'cards': GPU, 'text': 'Grafikkarte: %s · %s' % (g['name'], mem), 'video_ai': lvl, 'video_text': txt}
 
 
+def highlight_job(jid, audio, length, with_lyrics):
+    """Beste Stelle für Shorts suchen (Hintergrund-Thread)."""
+    j = HL_JOBS[jid]
+    try:
+        p = Path(audio['path'])
+        key = (str(p), p.stat().st_mtime)
+        dur = audio['info'].get('duration') or None
+        j.update(phase='Song wird analysiert …', percent=5)
+        if ('a',) + key not in HL_CACHE:
+            HL_CACHE[('a',) + key] = highlight.analyse(FFMPEG, p, run, dur)
+        A = HL_CACHE[('a',) + key]
+        lines, lang = None, ''
+        if with_lyrics:
+            if not LYRICS.model_ok():
+                raise RuntimeError('Das Songtext-Modell ist noch nicht heruntergeladen.')
+            if ('l',) + key not in HL_CACHE:
+                j.update(phase='Songtext wird erkannt (das dauert etwas) …', percent=15)
+                r = run([FFMPEG, '-v', 'error', '-nostdin', '-i', str(p), '-vn', '-ac', '1', '-ar', '16000', '-f', 's16le', '-'], timeout=600)
+                if r.returncode:
+                    raise RuntimeError('Song konnte nicht gelesen werden')
+                import numpy as np
+                pcm = np.frombuffer(r.stdout, np.int16).astype(np.float32) / 32768.0
+                HL_CACHE[('l',) + key] = LYRICS.transcribe(pcm, lambda pc: j.update(percent=15 + int(pc * 0.8)))
+            lines, lang = HL_CACHE[('l',) + key]
+        j.update(phase='Vorschläge werden berechnet …', percent=96)
+        sug = highlight.suggest(A, length, lines)
+        j.update(state='fertig', percent=100, result={
+            'suggestions': sug, 'bpm': round(float(A['bpm']), 1), 'lyrics': bool(with_lyrics),
+            'lines': len(lines or []), 'language': lang,
+            'note': ('Kein Gesang erkannt – die Vorschläge beruhen nur auf dem Klang.' if with_lyrics and not lines else '')})
+    except Exception as ex:  # noqa: BLE001
+        j.update(state='fehler', error=str(ex) or 'Unbekannter Fehler')
+
+
 def ai_info():
     if not mark or mark.cv2 is None:
         return {'tools': False, 'model': False, 'text': 'KI-Helfer nicht verfügbar (OpenCV fehlt)'}
@@ -1039,6 +1086,12 @@ class Handler(BaseHTTPRequestHandler):
         u = urllib.parse.urlsplit(self.path)
         path = u.path
         LAST_PING[0] = time.time()
+        if path == '/api/lyrics/status':
+            return self.send_json(200, LYRICS.status())
+        m = re.fullmatch(r'/api/highlight/([0-9a-f]+)', path)
+        if m:
+            j = HL_JOBS.get(m.group(1))
+            return self.send_json(200 if j else 404, j or {'error': 'Unbekannte Suche'})
         if path == '/api/info':
             conf = load_config()
             return self.send_json(200, {
@@ -1048,6 +1101,7 @@ class Handler(BaseHTTPRequestHandler):
                 'transitions': [{'group': g, 'id': i, 'name': n} for g, i, n in TRANSITIONS],
                 'vizStyles': [{'id': i, 'name': n, 'short': k} for i, n, k in viz.STYLES],
                 'presets': conf.get('presets') or [], 'ai': ai_info(), 'gpu': gpu_view(),
+                'lyrics': LYRICS.status(), 'short_lengths': list(highlight.LENGTHS),
                 'ai_waves': [{'id': i, 'name': n} for i, n in viz.AI_WAVES],
                 'fx': {'effects': [{'id': i, 'name': n, 'short': k, 'desc': d} for i, n, k, d in fx.EFFECTS],
                        'cams': [{'id': i, 'name': n, 'desc': d} for i, n, d in fx.CAMS],
@@ -1167,6 +1221,23 @@ class Handler(BaseHTTPRequestHandler):
                 finally:
                     tmp.unlink(missing_ok=True)
             data = self.body_json()
+            if path == '/api/lyrics/download':
+                if not LYRICS.lib_ok():
+                    return self.send_json(400, {'error': 'Die Songtext-Erkennung ist in diesem Programm nicht enthalten.'})
+                LYRICS.download()
+                return self.send_json(200, LYRICS.status())
+            if path == '/api/highlight':
+                a = STAGED.get(data.get('audio') or '')
+                if not a or a.get('kind') != 'audio':
+                    return self.send_json(400, {'error': 'Zuerst einen Song hineinziehen.'})
+                if highlight.np is None:
+                    return self.send_json(400, {'error': 'Die Song-Analyse ist nicht verfügbar (numpy fehlt).'})
+                length = int(data.get('length') or 60)
+                length = length if length in highlight.LENGTHS else 60
+                jid = secrets.token_hex(6)
+                HL_JOBS[jid] = {'state': 'läuft', 'percent': 0, 'phase': 'Start …', 'result': None, 'error': ''}
+                threading.Thread(target=highlight_job, args=(jid, a, length, bool(data.get('lyrics'))), daemon=True).start()
+                return self.send_json(200, {'id': jid})
             if path in ('/api/mark/segment', '/api/mark/refine', '/api/mark/suggest'):
                 if not mark or mark.cv2 is None:
                     return self.send_json(400, {'error': 'KI-Helfer sind nicht verfügbar (OpenCV fehlt).'})
@@ -1496,16 +1567,68 @@ class WinFrame:
     def is_max(self):
         return bool(self.saved)
 
-    def toggle_full(self):
-        """F11: ganzer Bildschirm inkl. Taskleiste – nochmal F11 (oder Esc) kehrt zurück."""
+    def _monitor(self):
         ctypes, wintypes, u = self._user32()
+        u.MonitorFromWindow.restype = wintypes.HANDLE
+        u.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+        return u.MonitorFromWindow(self.handle(), 2)
+
+    def monitors(self):
+        """Alle Bildschirme als [(links, oben, breite, höhe), …] (ganze Fläche)."""
+        ctypes, wintypes, u = self._user32()
+        out = []
+        proc = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HANDLE, wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+
+        def cb(hmon, hdc, rect, data):
+            r = rect.contents
+            out.append((r.left, r.top, r.right - r.left, r.bottom - r.top))
+            return 1
+        u.EnumDisplayMonitors(None, None, proc(cb), 0)
+        return sorted(out)
+
+    def _place(self, x, y, w, h):
+        ctypes, wintypes, u = self._user32()
+        # HWND_TOP (kein „immer im Vordergrund“): Fenster vom 2. Monitor dürfen darüber, Ziehen & Ablegen geht weiter
+        u.SetWindowPos(self.handle(), 0, int(x), int(y), int(w), int(h), 0x0010 | 0x0040)
+
+    def toggle_full(self):
+        """F11: echtes Vollbild über den ganzen Monitor (ohne Rahmen und Taskleiste), aber NICHT „immer im Vordergrund“ –
+        so kann man mit zwei Monitoren weiter Fenster und Dateien hin- und herziehen. Nochmal F11 (oder Esc) = zurück."""
         if self.full:
-            u.SetWindowPos(self.handle(), -2, *[int(v) for v in self.full], 0x0010)  # HWND_NOTOPMOST
+            rect, mon = self.full
             self.full = None
+            if self._monitor() != mon:                      # inzwischen anderer Monitor: dort maximiert
+                self.saved = self.saved or rect
+                self._place(*self._work_area())
+            else:
+                self._place(*rect)
             return False
-        self.full = self._rect()
-        x, y, w, h = self._work_area(True)
-        u.SetWindowPos(self.handle(), -1, x, y, w, h, 0x0010)  # HWND_TOPMOST über die Taskleiste
+        self.full = (self._rect(), self._monitor())
+        self._place(*self._work_area(True))
+        return True
+
+    def fit_full(self):
+        """Im Vollbild: an den Monitor anpassen, auf dem das Fenster gerade ist (z. B. nach Win+Umschalt+Pfeil)."""
+        if self.full and self._rect() != self._work_area(True):
+            self._place(*self._work_area(True))
+        return bool(self.full)
+
+    def next_monitor(self):
+        """Fenster (Vollbild oder maximiert) auf den nächsten Monitor schieben."""
+        mons = self.monitors()
+        if len(mons) < 2:
+            return False
+        x, y, w, h = self._rect()
+        cx, cy = x + w // 2, y + h // 2
+        cur = next((i for i, m in enumerate(mons) if m[0] <= cx < m[0] + m[2] and m[1] <= cy < m[1] + m[3]), 0)
+        nx, ny, nw, nh = mons[(cur + 1) % len(mons)]
+        # erst grob hinschieben, dann an Monitor bzw. Arbeitsfläche anpassen
+        self._place(nx + 40, ny + 40, min(w, nw - 80), min(h, nh - 80))
+        if self.full:
+            self.full = (self.full[0], self._monitor())
+            self._place(*self._work_area(True))
+        elif self.saved:
+            self._place(*self._work_area())
         return True
 
     def minimize(self):
@@ -1553,6 +1676,24 @@ def native_window(url):
 
         def is_full(self):
             return bool(frame.full)
+
+        def fit_full(self):
+            try:
+                return frame.fit_full()
+            except Exception:  # noqa: BLE001
+                return False
+
+        def next_monitor(self):
+            try:
+                return frame.next_monitor()
+            except Exception:  # noqa: BLE001
+                return False
+
+        def monitor_count(self):
+            try:
+                return len(frame.monitors())
+            except Exception:  # noqa: BLE001
+                return 1
 
         def pick_folder(self, start=''):
             try:

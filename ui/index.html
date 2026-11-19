@@ -15,8 +15,8 @@
  <div class="sp-center">
   <div class="sp-logo"><span class="sp-ring r1"></span><span class="sp-ring r2"></span><span class="sp-ring r3"></span><span class="sp-eq"><i></i><i></i><i></i><i></i><i></i></span></div>
   <p class="sp-kicker">Willkommen im</p>
-  <h1 class="sp-title">ffmpeg_encode Studio</h1>
-  <p class="sp-tag">Dein Song. Dein Bild. Fertig für YouTube.</p>
+  <h1 class="sp-title">Butchies Encode Studio <span class="ai-mark">AI</span></h1>
+  <p class="sp-tag">Dein Song. Dein Bild. Fertig für YouTube – jetzt mit KI.</p>
   <p class="sp-skip">Klicken zum Überspringen</p>
  </div>
 </div>
@@ -44,6 +44,8 @@
  </nav>
  <div class="winctl" aria-label="Fenster">
   <button type="button" id="winMin" aria-label="Minimieren"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+  <button type="button" id="winMon" class="mon" aria-label="Auf anderen Monitor" title="Auf den anderen Monitor (Win + Umschalt + Pfeil)" hidden><svg viewBox="0 0 24 24"><rect x="2" y="5" width="9" height="7" rx="1"/><rect x="13" y="12" width="9" height="7" rx="1"/><path d="M11 9h3l-1.5-1.5M13 15h-3l1.5 1.5"/></svg></button>
+  <button type="button" id="winFull" aria-label="Vollbild" title="Vollbild (F11)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
   <button type="button" id="winMax" aria-label="Maximieren" title="Maximieren · F11 = Vollbild"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1.5"/></svg></button>
   <button type="button" id="winClose" class="x" aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
  </div>
@@ -66,6 +68,16 @@
   <div data-fold="fmt" class="card">
    <h2><span class="n">1</span> Zielformat</h2>
    <div class="fmt-list" id="fmtList"></div>
+   <div class="short-ext" id="shortExt" hidden>
+    <div class="se-head"><b>✨ Shorts-Helfer</b><small>Länge wählen – die KI sucht die beste Stelle</small></div>
+    <div class="seg lens" id="shortLens" role="group" aria-label="Länge des Shorts"></div>
+    <button type="button" class="tg" id="lyrBtn" role="switch" aria-checked="false"><span><b>Mit Songtext</b><small id="lyrSub">liest den Gesang mit – findet Refrain und gefühlvolle Zeilen genauer</small></span><span class="switch" aria-checked="false"><i></i></span></button>
+    <div class="lyr-dl" id="lyrDl" hidden></div>
+    <button type="button" class="btn accent wide" id="hlBtn">✨ Beste Stelle finden</button>
+    <div class="hl-prog" id="hlProg" hidden><div class="hl-bar"><i id="hlBar"></i></div><small id="hlPhase"></small></div>
+    <p class="mhint" id="hlNote" hidden></p>
+    <div class="hl-list" id="hlList"></div>
+   </div>
   </div>
 
   <div data-fold="fit" class="card">
@@ -200,16 +212,6 @@
     <button type="button" class="btn accent" id="fxPreviewBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Vorschau mit Ton (6 s)</button>
     <small>Im Vorschaubild siehst du eine Skizze – die Vorschau zeigt das echte Ergebnis. Effekte machen das Umwandeln etwas langsamer.</small>
    </div>
-  </div>
-
-  <div class="card soon" id="soonCard">
-   <div class="row-between">
-    <h2><span class="n">🎬</span> KI-Video</h2>
-    <span class="chip soon-chip">Demnächst</span>
-   </div>
-   <p>Aus deinem Bild und einem markierten Bereich echte Bewegung erzeugen – z. B. eine Person, die tanzt, oder Wasser, das wirklich fließt. Das kommt später als freiwilliger Zusatz-Download (ca. 15–20 GB) und braucht eine starke NVIDIA-Grafikkarte.</p>
-   <div class="soon-gpu" id="soonGpu"><span class="dot"></span><span id="soonText">Grafikkarte wird geprüft …</span></div>
-   <button type="button" class="btn" disabled>Noch nicht verfügbar</button>
   </div>
 
   <div data-fold="time" class="card">
@@ -358,7 +360,7 @@
   <div class="g-logo" aria-hidden="true"><span class="sp-ring r1"></span><span class="sp-ring r2"></span><span class="sp-ring r3"></span><span class="g-eq"><i></i><i></i><i></i><i></i><i></i></span></div>
   <p class="g-kicker">Danke fürs Erstellen</p>
   <h1 class="g-title">Bis bald!</h1>
-  <p class="g-tag">ffmpeg_encode Studio · Butchies</p>
+  <p class="g-tag">Butchies Encode Studio <span class="ai-mark">AI</span></p>
   <p class="g-hint" id="gHint">Deine Videos warten schon auf YouTube.</p>
  </div>
  <span class="g-wave" aria-hidden="true"></span>

@@ -1037,8 +1037,12 @@ function renderFx() {
   if (!S.settings || !S.info || !S.info.fx) return;
   const s = S.settings, info = S.info.fx, on = s.fx !== 'none';
   const tb = $('#fxTiles');
-  if (!tb.childElementCount) info.effects.forEach(e => tb.append(el('button', { type: 'button', class: 'fxtile', 'data-id': e.id, title: e.name, 'aria-label': e.name, onclick: () => setFx(e.id) },
-    el('span', { class: 'fx-ic', 'aria-hidden': 'true', html: `<svg viewBox="0 0 24 24">${FX_ICON[e.id] || ''}</svg>` }), el('span', {}, e.short))));
+  if (!tb.childElementCount) {
+    info.effects.forEach(e => tb.append(el('button', { type: 'button', class: 'fxtile', 'data-id': e.id, title: e.name, 'aria-label': e.name, onclick: () => setFx(e.id) },
+      el('span', { class: 'fx-ic', 'aria-hidden': 'true', html: `<svg viewBox="0 0 24 24">${FX_ICON[e.id] || ''}</svg>` }), el('span', {}, e.short))));
+    tb.append(el('button', { type: 'button', class: 'fxtile soon', title: 'KI-Video – demnächst', 'aria-label': 'KI-Video – demnächst', onclick: soonInfo },
+      el('span', { class: 'fx-ic', 'aria-hidden': 'true' }, '🎬'), el('span', {}, 'KI-Video'), el('em', {}, 'bald')));
+  }
   $$('.fxtile').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === s.fx)));
   const cur = info.effects.find(e => e.id === s.fx) || info.effects[0];
   $('#fxDesc').textContent = cur.desc;
@@ -1171,12 +1175,93 @@ function fxFrame(ts) {
 requestAnimationFrame(fxFrame);
 
 /* KI-Video – kommt später */
-function renderSoon() {
-  const gp = S.info && S.info.gpu; if (!gp) return;
-  $('#soonText').textContent = (gp.cards && gp.cards.length ? gp.text.replace('Grafikkarte: ', 'Deine Grafikkarte: ') + ' – ' : '') + gp.video_text;
-  $('#soonGpu').dataset.lvl = gp.video_ai;
+function renderSoon() {}
+function soonInfo() {
+  const gp = (S.info && S.info.gpu) || {};
+  const pc = (gp.cards && gp.cards.length ? gp.text.replace('Grafikkarte: ', 'Deine Grafikkarte: ') + '. ' : '') + (gp.video_text || '');
+  ask('🎬 KI-Video – demnächst', 'Später kann eine KI aus deinem Bild und einem markierten Bereich echte Bewegung erzeugen – z. B. eine Person, die tanzt, oder Wasser, das wirklich fließt. Das kommt als freiwilliger Zusatz-Download (ca. 15–20 GB) und braucht eine starke NVIDIA-Grafikkarte.\n\n' + pc, 'Alles klar');
 }
 
+
+/* ---------- Shorts-Helfer: Länge + beste Stelle (KI) ---------- */
+const HL = { id: '', timer: 0, res: null, stopAt: 0, lyrTimer: 0 };
+const lenName = v => v < 60 ? v + ' s' : (v % 60 ? (v / 60).toFixed(1).replace('.', ',') : v / 60) + ':00'.slice(v % 60 ? 3 : 0);
+function tstr(t) { const m = Math.floor(t / 60), s = t - m * 60; const ss = (Math.round(s * 10) / 10).toFixed(1).replace(/\.0$/, ''); return `${m}:${(s < 10 ? '0' : '') + ss}` }
+function renderShort() {
+  const s = S.settings, tall = fmtOf(s.fmt)[3], box = $('#shortExt');
+  box.hidden = !tall; if (!tall) return;
+  const lens = (S.info && S.info.short_lengths) || [15, 30, 45, 60, 90, 120, 180], lb = $('#shortLens');
+  if (lb.childElementCount !== lens.length) { lb.textContent = ''; lens.forEach(v => lb.append(el('button', { type: 'button', 'data-v': v, onclick: () => set('shortLen', v) }, v < 60 ? v + ' s' : `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`))) }
+  $$('#shortLens button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === s.shortLen)));
+  const ly = (S.info && S.info.lyrics) || {}, on = !!s.shortLyrics && ly.lib;
+  $('#lyrBtn').setAttribute('aria-checked', String(on)); $('#lyrBtn .switch').setAttribute('aria-checked', String(on));
+  $('#lyrBtn').disabled = !ly.lib;
+  $('#lyrSub').textContent = ly.lib ? 'liest den Gesang mit – findet Refrain und gefühlvolle Zeilen genauer' : 'in diesem Programm nicht verfügbar';
+  const dl = $('#lyrDl'); dl.textContent = '';
+  dl.hidden = !(on && !ly.model);
+  if (on && !ly.model) {
+    const d = ly.download || {};
+    if (d.state === 'running') dl.append(el('div', { class: 'hl-bar' }, el('i', { style: `width:${d.percent}%` })), el('small', {}, `Songtext-Modell wird geladen … ${d.percent} %`));
+    else dl.append(el('small', {}, d.state === 'error' ? d.error : `Einmalig ca. ${ly.mb || 145} MB herunterladen (danach offline).`),
+      el('button', { type: 'button', class: 'btn small', onclick: startLyrDownload }, d.state === 'error' ? 'Nochmal versuchen' : 'Jetzt laden'));
+  }
+  $('#hlBtn').disabled = !S.audio || !!HL.id || (on && !ly.model);
+  $('#hlBtn').textContent = S.audio ? `✨ Beste Stelle finden (${s.shortLen < 60 ? s.shortLen + ' s' : Math.floor(s.shortLen / 60) + ':' + String(s.shortLen % 60).padStart(2, '0')})` : 'Zuerst einen Song hineinziehen';
+}
+$('#lyrBtn').onclick = () => { set('shortLyrics', !S.settings.shortLyrics); refreshLyr() };
+async function refreshLyr() { try { S.info.lyrics = await api('/api/lyrics/status'); renderShort() } catch (_) {} }
+async function startLyrDownload() {
+  try { S.info.lyrics = await api('/api/lyrics/download', {}); renderShort() } catch (e) { toast(e.message, true); return }
+  clearInterval(HL.lyrTimer);
+  HL.lyrTimer = setInterval(async () => {
+    await refreshLyr(); const d = S.info.lyrics.download || {};
+    if (d.state !== 'running') { clearInterval(HL.lyrTimer); if (d.state === 'done') toast('✓ Songtext-Modell geladen – ab jetzt offline') }
+  }, 700);
+}
+$('#hlBtn').onclick = async () => {
+  if (!S.audio) return;
+  const s = S.settings;
+  try {
+    const d = await api('/api/highlight', { audio: S.audio.token, length: s.shortLen, lyrics: !!s.shortLyrics });
+    HL.id = d.id; $('#hlList').textContent = ''; $('#hlNote').hidden = true; $('#hlProg').hidden = false; renderShort();
+    clearInterval(HL.timer);
+    HL.timer = setInterval(async () => {
+      let j; try { j = await api('/api/highlight/' + HL.id) } catch (e) { return }
+      $('#hlBar').style.width = j.percent + '%'; $('#hlPhase').textContent = j.phase;
+      if (j.state === 'läuft') return;
+      clearInterval(HL.timer); HL.id = ''; $('#hlProg').hidden = true; renderShort();
+      if (j.state === 'fehler') { toast(j.error, true); return }
+      HL.res = j.result; renderHl();
+    }, 400);
+  } catch (e) { toast(e.message, true) }
+};
+function renderHl() {
+  const r = HL.res, box = $('#hlList'); box.textContent = ''; if (!r) return;
+  const note = [r.lyrics ? (r.lines ? `${r.lines} Textzeilen erkannt${r.language ? ' (' + r.language.toUpperCase() + ')' : ''}` : '') : '', `Tempo ca. ${Math.round(r.bpm)} BPM`, r.note].filter(Boolean).join(' · ');
+  $('#hlNote').textContent = note; $('#hlNote').hidden = !note;
+  const ic = { chorus: '🎵', drop: '⚡', emo: '💗', all: '🎶' };
+  r.suggestions.forEach(sg => box.append(el('div', { class: 'hl-card' },
+    el('div', { class: 'hl-top' }, el('b', {}, `${ic[sg.kind] || '✨'} ${sg.name}`), el('span', { class: 'hl-time' }, `${tstr(sg.start)} – ${tstr(sg.end)}`)),
+    el('small', {}, sg.why), sg.lyric ? el('q', {}, sg.lyric) : null,
+    el('div', { class: 'hl-acts' },
+      el('button', { type: 'button', class: 'btn small', onclick: () => playHl(sg) }, '▶ Anhören'),
+      el('button', { type: 'button', class: 'btn small glow', onclick: () => applyHl(sg) }, 'Übernehmen')))));
+}
+function playHl(sg) {
+  if (!S.audio) return;
+  aud.currentTime = sg.start; HL.stopAt = sg.end; aud.play().catch(() => {});
+}
+setTimeout(() => {                                   // der Audio-Player wird weiter unten angelegt
+  aud.addEventListener('timeupdate', () => { if (HL.stopAt && aud.currentTime >= HL.stopAt) { aud.pause(); HL.stopAt = 0 } });
+  aud.addEventListener('pause', () => { if (HL.stopAt && aud.currentTime < HL.stopAt - 0.3) HL.stopAt = 0 });
+}, 0);
+function applyHl(sg) {
+  const s = S.settings;
+  s.start = tstr(sg.start); s.end = tstr(sg.end);
+  s.fadeIn = Math.min(s.fadeIn, 0.5); s.fadeOut = Math.min(Math.max(s.fadeOut, 1), 1.5);
+  $('#tStart').value = s.start; $('#tEnd').value = s.end;
+  changed('time'); toast(`✓ ${sg.name} übernommen: ${s.start} – ${s.end} (kurz ein-/ausgeblendet)`);
+}
 
 /* ---------- Vorlagen-Menü in der Kopfzeile ---------- */
 function tplMenu(open) {
@@ -1239,7 +1324,7 @@ setupFolds();
 const saveSettings = debounce(() => api('/api/config', { settings: S.settings }).catch(() => {}), 600);
 function changed(what) {
   const s = S.settings;
-  renderFormats(); renderFits(); renderFps(); renderEnc(); renderSeg('#colorSeg', 'color'); renderViz(); renderFx(); foldSummaries();
+  renderFormats(); renderFits(); renderFps(); renderEnc(); renderSeg('#colorSeg', 'color'); renderViz(); renderFx(); renderShort(); foldSummaries();
   $('#fadeIn').value = s.fadeIn; $('#fadeOut').value = s.fadeOut;
   $('#fiVal').textContent = secDe(s.fadeIn); $('#foVal').textContent = secDe(s.fadeOut);
   $('#lgIn').textContent = secDe(s.fadeIn); $('#lgOut').textContent = secDe(s.fadeOut);
@@ -1590,8 +1675,21 @@ async function toggleFull() {
   if (w && w.toggle_fullscreen && document.body.classList.contains('native')) on = await w.toggle_fullscreen();
   else { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen().catch(() => {}); on = !!document.fullscreenElement }
   document.body.classList.toggle('full', !!on);
-  if (on) toast('Vollbild – mit F11 oder Esc zurück');
+  fullUi();
+  if (on) toast('Vollbild – F11 oder Esc = zurück. Fenster und Dateien vom anderen Monitor kannst du weiter hin- und herziehen.');
 }
+let MONS = 1;
+async function fullUi() {
+  const w = window.pywebview && window.pywebview.api, nat = document.body.classList.contains('native');
+  if (nat && w && w.monitor_count) MONS = await w.monitor_count().catch(() => 1);
+  $('#winMon').hidden = !(nat && MONS > 1);
+  $('#winFull').setAttribute('aria-label', document.body.classList.contains('full') ? 'Vollbild beenden' : 'Vollbild');
+}
+$('#winFull').onclick = toggleFull;
+$('#winMon').onclick = async () => { const w = window.pywebview && window.pywebview.api; if (w && w.next_monitor) await w.next_monitor() };
+/* im Vollbild immer den ganzen aktuellen Monitor füllen (z. B. nach Win + Umschalt + Pfeil) */
+addEventListener('resize', debounce(() => { const w = window.pywebview && window.pywebview.api; if (document.body.classList.contains('full') && w && w.fit_full) w.fit_full() }, 250));
+addEventListener('pywebviewready', () => setTimeout(fullUi, 600));
 addEventListener('keydown', e => {
   if (e.key === 'F11') { e.preventDefault(); toggleFull() }
   else if (e.key === 'Escape' && document.body.classList.contains('full') && !document.querySelector('dialog[open]')) toggleFull();
