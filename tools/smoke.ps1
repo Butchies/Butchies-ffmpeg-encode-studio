@@ -64,5 +64,42 @@ $ld = Invoke-RestMethod -Method Post -Uri "$base/api/project/load" -Headers $h -
 if ($ld.settings.vizStyle -ne 'led') { throw 'Projekt laden fehlgeschlagen' }
 $ps = Invoke-RestMethod -Method Post -Uri "$base/api/presets/save" -Headers $h -ContentType 'application/json' -Body (@{ name = 'Smoke Vorlage'; settings = @{ fmt = 'yt4k' } } | ConvertTo-Json -Depth 4)
 "Vorlagen: $($ps.presets.Count)" | Tee-Object -FilePath $Out -Append
+# ---- 1.2.0: Markieren + KI (MobileSAM) ----
+"KI: $($info.ai.text)  (Werkzeuge: $($info.ai.tools), Modell: $($info.ai.model))" | Tee-Object -FilePath $Out -Append
+if (-not $info.ai.tools) { throw 'KI-Werkzeuge (OpenCV) fehlen im Programm' }
+if (-not $info.ai.model) { throw 'KI-Modell (MobileSAM) nicht mitgeliefert' }
+& $ff -v error -y -f lavfi -i "color=c=0x1c2a3a:s=1600x900,drawbox=x=600:y=250:w=400:h=400:color=0xf2c94c:t=fill" -frames:v 1 "$work\motiv.png"
+$m = Stage "$work\motiv.png" 'image'
+$seg = Invoke-RestMethod -Method Post -Uri "$base/api/mark/segment" -Headers $h -ContentType 'application/json' -Body (@{ image = $m; settings = @{ fmt = 'yt1080'; fit = 'contain' }; points = @(, @(0.5, 0.5, 1)) } | ConvertTo-Json -Depth 5)
+"KI-Auswahl: Methode $($seg.method), Rahmen $($seg.bbox -join ' / '), $($seg.seconds) s $($seg.note)" | Tee-Object -FilePath $Out -Append
+if ($seg.method -ne 'ki') { throw "KI-Auswahl lief nicht mit MobileSAM: $($seg.note)" }
+$bx = $seg.bbox
+if ([math]::Abs($bx[0] - 37.5) -gt 4 -or [math]::Abs($bx[2] - 25) -gt 5 -or [math]::Abs($bx[3] - 44.4) -gt 6) { throw 'KI-Auswahl hat das Motiv nicht richtig erkannt' }
+$ref = Invoke-RestMethod -Method Post -Uri "$base/api/mark/refine" -Headers $h -ContentType 'application/json' -Body (@{ image = $m; settings = @{ fmt = 'yt1080'; fit = 'contain' }; points = @(@(0.30, 0.25), @(0.5, 0.30), @(0.70, 0.25)); closed = $false } | ConvertTo-Json -Depth 5)
+"Linie verfeinert: $($ref.points.Count) Punkte" | Tee-Object -FilePath $Out -Append
+$sug = Invoke-RestMethod -Method Post -Uri "$base/api/mark/suggest" -Headers $h -ContentType 'application/json' -Body (@{ image = $m; settings = @{ fmt = 'yt1080'; fit = 'contain' } } | ConvertTo-Json -Depth 5)
+"Platzvorschläge: $(($sug.suggestions | ForEach-Object { $_.name }) -join ', ')" | Tee-Object -FilePath $Out -Append
+if ($sug.suggestions.Count -lt 1) { throw 'Keine Platzvorschläge' }
+& $ff -v error -y -f lavfi -i "color=c=black:s=960x540,drawbox=x=100:y=300:w=500:h=200:color=white:t=fill,format=gray" -frames:v 1 "$work\maske.png"
+$mk = Invoke-RestMethod -Method Post -Uri "$base/api/mark/mask" -Headers $h -InFile "$work\maske.png" -ContentType 'image/png'
+$ring = @(); for ($i = 0; $i -lt 48; $i++) { $t = $i / 48 * 2 * [math]::PI; $ring += , @([math]::Round(0.5 + 0.15 * [math]::Cos($t), 4), [math]::Round(0.5 + 0.2667 * [math]::Sin($t), 4)) }
+$marks = @(
+  @{ name = 'Maske'; s = @{ vizShape = 'mask'; vizMask = $mk.token; vizX = $mk.bbox[0]; vizY = $mk.bbox[1]; vizW = $mk.bbox[2]; vizH = $mk.bbox[3]; vizStyle = 'mirror' } },
+  @{ name = 'Ring'; s = @{ vizShape = 'path'; vizClosed = $true; vizPath = $ring; vizStyle = 'bars'; vizBoth = $false } },
+  @{ name = 'Linie'; s = @{ vizShape = 'path'; vizClosed = $false; vizPath = @(@(0.1, 0.7), @(0.5, 0.6), @(0.9, 0.7)); vizStyle = 'wave' } }
+)
+foreach ($c in $marks) {
+  $st = @{ fmt = 'yt1080'; fps = 25; viz = $true; fit = 'contain'; vizMode = 'rainbow' }
+  foreach ($k in $c.s.Keys) { $st[$k] = $c.s[$k] }
+  $body = @{ audio = $a; image = $m; outdir = $outdir; settings = $st } | ConvertTo-Json -Depth 6
+  $job = Invoke-RestMethod -Method Post -Uri "$base/api/encode" -Headers $h -Body $body -ContentType 'application/json'
+  for ($i = 0; $i -lt 240; $i++) {
+    Start-Sleep -Seconds 1
+    $j = Invoke-RestMethod "$base/api/job/$($job.id)" -Headers $h
+    if (@('fertig', 'fehler', 'abgebrochen') -contains $j.state) { break }
+  }
+  "[Markierung $($c.name)] Status: $($j.state) – $($j.out)" | Tee-Object -FilePath $Out -Append
+  if ($j.state -ne 'fertig') { $j.error | Tee-Object -FilePath $Out -Append; throw "Video mit Markierung $($c.name) fehlgeschlagen" }
+}
 Stop-Process -Id $p.Id -Force
 'SMOKE OK' | Tee-Object -FilePath $Out -Append

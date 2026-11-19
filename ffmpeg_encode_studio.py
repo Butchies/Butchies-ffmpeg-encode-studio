@@ -9,9 +9,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import viz
+try:
+    import mark          # braucht numpy + OpenCV (+ onnxruntime für die KI)
+except Exception:  # noqa: BLE001
+    mark = None
 
 APP_NAME = 'ffmpeg_encode Studio'
-VERSION = '1.1.0'
+VERSION = '1.2.0'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -24,6 +28,11 @@ NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
 TOKEN = secrets.token_urlsafe(16)
 LAST_PING = [time.time()]
 NATIVE = [False]
+MASKS = {}         # token -> Pfad der Maske (Graustufen-PNG, ganzes Bild)
+SEGS = {}          # id -> KI-Ergebnis (PNG)
+ANALYSIS = {}      # (bild, format, fit) -> Analysebild (max. 1024 px)
+MODEL_DIR = next((d for d in (APP_DIR / 'models', BASE / 'models', Path(__file__).resolve().parent / 'models') if d.is_dir()), APP_DIR / 'models')
+SAM = mark.Sam(MODEL_DIR) if mark and mark.cv2 is not None else None
 
 # Zielformate (Breite, Höhe, Hochformat?)
 FORMATS = {
@@ -331,7 +340,34 @@ def transition_graph(vchain, w, h, fps, dur, fi, fo, t_in, t_out, color, label='
     return out
 
 
-def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fast=False, cmdfile=None):
+def prepare_mark(s, W, H, dur, workdir=None, tag='x'):
+    """Masken-/Pfad-Dateien für FFmpeg erzeugen. Rückgabe (zusätzliche Eingabedateien, extra-Infos für viz.graph)."""
+    if not s['viz'] or s['vizShape'] == 'box':
+        return [], {}
+    if s['vizShape'] == 'mask':
+        if workdir is None or not mark:
+            return ['maske.png'], {'mask': '[2:v]'}
+        src = MASKS.get(s['vizMask'])
+        if not src or not Path(src).is_file():
+            return [], {}
+        vw, vh = viz.even(W * s['vizW'] / 100), viz.even(H * s['vizH'] / 100)
+        ox, oy = min(int(W * s['vizX'] / 100), W - vw), min(int(H * s['vizY'] / 100), H - vh)
+        out = Path(workdir) / ('mask-%s.png' % tag)
+        mark.mask_crop(src, W, H, ox, oy, vw, vh, out, s['vizFeather'])
+        return [str(out)], {'mask': '[2:v]'}
+    thick = max(4, int(H * s['vizThick'] / 100))
+    if workdir is None or not mark:
+        xs = [q[0] for q in s['vizPath']]
+        ys = [q[1] for q in s['vizPath']]
+        bw, bh = viz.even(W * max(0.02, max(xs) - min(xs)) + 2 * thick), viz.even(H * max(0.02, max(ys) - min(ys)) + 2 * thick)
+        return ['karte-x.pgm', 'karte-y.pgm'], {'path': {'xm': '[2:v]', 'ym': '[3:v]', 'L': 1000, 'T': thick, 'ox': max(0, int(W * min(xs)) - thick),
+                                                       'oy': max(0, int(H * min(ys)) - thick), 'bw': bw, 'bh': bh, 'closed': s['vizClosed']}}
+    xp, yp = Path(workdir) / ('xmap-%s.pgm' % tag), Path(workdir) / ('ymap-%s.pgm' % tag)
+    ox, oy, bw, bh, L, T = mark.path_maps(s['vizPath'], s['vizClosed'], s['vizBoth'], W, H, thick, xp, yp)
+    return [str(xp), str(yp)], {'path': {'xm': '[2:v]', 'ym': '[3:v]', 'L': L, 'T': T, 'ox': ox, 'oy': oy, 'bw': bw, 'bh': bh, 'closed': s['vizClosed']}}
+
+
+def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fast=False, cmdfile=None, mark_dir=None, tag='x'):
     s = dict(s, enc='x264' if fast else resolve_enc(s['enc']))
     name, w, h, vertical = FORMATS[s['fmt']]
     w, h = int(w * scale) // 2 * 2, int(h * scale) // 2 * 2
@@ -350,11 +386,13 @@ def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fas
     vid = '[0:v]format=yuv420p,loop=loop=-1:size=1:start=0,fps=%d,setpts=N/%d/TB' % (fps, fps)
     if s['viz']:
         parts.append('[1:a]%s,asplit=2[aout][av]' % ','.join(afx))
-        vparts, ox, oy = viz.graph(s, w, h, fps, dur, cmdfile)
+        extra_in, extra = prepare_mark(s, w, h, dur, mark_dir, tag)
+        vparts, ox, oy = viz.graph(s, w, h, fps, dur, cmdfile, extra)
         parts.extend(vparts)
         parts.append('%s[base];[base][wv]overlay=%d:%d:shortest=0:eof_action=pass,format=yuv420p' % (vid, ox, oy))
         vchain = parts.pop()
     else:
+        extra_in = []
         parts.append('[1:a]%s[aout]' % ','.join(afx))
         vchain = vid
     parts.extend(transition_graph(vchain, w, h, fps, dur, fi if do_v else 0, fo if do_v else 0,
@@ -385,7 +423,11 @@ def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fas
     args = [FFMPEG, '-hide_banner', '-y', '-i', str(still_png)]
     if start > 0:
         args += ['-ss', num(start)]
-    args += ['-t', num(dur), '-i', str(audio_path), '-filter_complex', graph, '-map', '[v]', '-map', '[aout]']
+    args += ['-t', num(dur), '-i', str(audio_path)]
+    if s['viz']:
+        for f in extra_in:
+            args += ['-i', str(f)]
+    args += ['-filter_complex', graph, '-map', '[v]', '-map', '[aout]']
     args += venc + ['-r', str(fps), '-c:a', 'aac', '-b:a', '384k', '-ac', '2', '-t', num(dur), '-movflags', '+faststart',
                     '-metadata', 'encoder=%s %s' % (APP_NAME, VERSION), str(out_path)]
     return args, {'encoder': s['enc'], 'encoder_name': ENCODERS[s['enc']][1], 'start': start, 'duration': dur, 'fadeIn': fi, 'fadeOut': fo, 'notes': notes, 'width': w, 'height': h,
@@ -445,9 +487,8 @@ def viz_preview(audio, img_path, out_mp4, s):
         return False, 'Bild konnte nicht vorbereitet werden'
     name = Path(str(out_mp4)).name + '.snd.txt'
     cmd = make_sound_cmds(audio['path'], s2, total, name)
-    args, _ = encode_command(still, audio['path'], out_mp4, s2, total, scale=k, fast=True, cmdfile=cmd)
-    r = run(args, timeout=240) if not cmd else subprocess.run(args, capture_output=True, timeout=240, creationflags=NO_WINDOW,
-                                                              stdin=subprocess.DEVNULL, cwd=str(STAGE))
+    args, _ = encode_command(still, audio['path'], out_mp4, s2, total, scale=k, fast=True, cmdfile=cmd, mark_dir=STAGE, tag='prev')
+    r = subprocess.run(args, capture_output=True, timeout=240, creationflags=NO_WINDOW, stdin=subprocess.DEVNULL, cwd=str(STAGE))
     still.unlink(missing_ok=True)
     if cmd:
         (STAGE / cmd).unlink(missing_ok=True)
@@ -516,7 +557,8 @@ def make_sound_cmds(audio_path, s, audio_dur, name):
 
 def encode_pass(j, still, part, s, cmdfile=None):
     """Ein FFmpeg-Durchlauf mit Fortschritt. Rückgabe (ok, letzte Fehlerzeilen)."""
-    args, meta = encode_command(still, j['audio']['path'], part, s, j['audio']['info'].get('duration'), cmdfile=cmdfile)
+    args, meta = encode_command(still, j['audio']['path'], part, s, j['audio']['info'].get('duration'), cmdfile=cmdfile,
+                                mark_dir=STAGE, tag=j['id'])
     j['meta'] = meta
     dur = meta['duration'] or 1
     args[1:1] = ['-progress', 'pipe:1', '-nostats']
@@ -704,6 +746,33 @@ def public_entry(tok, e):
     return {'token': tok, 'name': e['name'], 'kind': e['kind'], 'info': e['info'], 'size': e['size']}
 
 
+# ---------- Markieren / KI ----------
+def analysis_image(image_tok, s):
+    """Das fertige Videobild (Format + Bild-Anpassung) in max. 1024 px – darauf arbeitet die KI."""
+    i = STAGED.get(image_tok or '')
+    if not i:
+        raise ValueError('Zuerst ein Bild hineinziehen.')
+    key = (image_tok, s['fmt'], s['fit'])
+    p = ANALYSIS.get(key)
+    if p and Path(p).is_file():
+        return p, key
+    _, W, H, _ = FORMATS[s['fmt']]
+    out = STAGE / ('ana-%s-%s-%s.png' % (image_tok, s['fmt'], s['fit']))
+    r = run(still_command(i['path'], out, s, 1024 / max(W, H)), timeout=120)
+    if r.returncode or not out.is_file():
+        raise ValueError('Bild konnte nicht vorbereitet werden.')
+    ANALYSIS[key] = str(out)
+    return str(out), key
+
+
+def ai_info():
+    if not mark or mark.cv2 is None:
+        return {'tools': False, 'model': False, 'text': 'KI-Helfer nicht verfügbar (OpenCV fehlt)'}
+    model = bool(SAM and SAM.available())
+    return {'tools': True, 'model': model,
+            'text': 'KI-Auswahl: MobileSAM (offline)' if model else 'KI-Auswahl: einfache Erkennung (KI-Modell nicht gefunden)'}
+
+
 # ---------- Vorlagen & Projekte ----------
 PROJ_EXT = '.fesproj'
 
@@ -736,6 +805,9 @@ def save_project(name, settings, audio_tok, image_tok):
         z.writestr('projekt.json', json.dumps(meta, ensure_ascii=False, indent=1))
         z.write(a['path'], meta['audio']['file'])
         z.write(i['path'], meta['image']['file'])
+        mp = MASKS.get(meta['settings'].get('vizMask') or '')
+        if meta['settings'].get('vizShape') == 'mask' and mp and Path(mp).is_file():
+            z.write(mp, 'maske.png')
     tmp.replace(path)
     return path
 
@@ -752,6 +824,14 @@ def open_project(path):
         except (KeyError, ValueError):
             raise ValueError('In der Projektdatei fehlen die Einstellungen.')
         out = {'settings': clean_settings(meta.get('settings')), 'name': Path(path).stem}
+        if 'maske.png' in z.namelist():
+            tok = secrets.token_hex(8)
+            dest = STAGE / ('mask-%s.png' % tok)
+            with z.open('maske.png') as src, open(dest, 'wb') as dst:
+                shutil.copyfileobj(src, dst)
+            MASKS[tok] = str(dest)
+            out['settings']['vizMask'] = tok
+            out['settings'] = clean_settings(out['settings'])
         for kind in ('audio', 'image'):
             ent = meta.get(kind) or {}
             fn = ent.get('file', '')
@@ -851,10 +931,14 @@ class Handler(BaseHTTPRequestHandler):
                 'hw_done': HW_DONE.is_set(), 'auto_enc': resolve_enc('auto'),
                 'transitions': [{'group': g, 'id': i, 'name': n} for g, i, n in TRANSITIONS],
                 'vizStyles': [{'id': i, 'name': n, 'short': k} for i, n, k in viz.STYLES],
-                'presets': conf.get('presets') or [],
+                'presets': conf.get('presets') or [], 'ai': ai_info(),
                 'formats': {k: {'name': v[0], 'w': v[1], 'h': v[2], 'vertical': v[3]} for k, v in FORMATS.items()},
                 'outdir': conf.get('outdir') or default_outdir(), 'theme': conf.get('theme') or 'gold',
                 'settings': clean_settings(conf.get('settings')), 'intro': conf.get('intro', True)})
+        m = re.fullmatch(r'/api/(maskimg|maskfile)/([0-9a-f]+)', path)
+        if m:
+            p = SEGS.get(m.group(2)) if m.group(1) == 'maskimg' else MASKS.get(m.group(2))
+            return self.send_file(p, 'image/png') if p and Path(p).is_file() else self.send_json(404, {'error': 'Keine Maske'})
         if path == '/api/projects':
             return self.send_json(200, {'projects': list_projects(), 'folder': str(project_dir())})
         if path == '/api/presets':
@@ -931,6 +1015,20 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(400, {'error': str(e)})
                 return self.send_json(200, public_entry(tok, entry))
 
+            if path == '/api/mark/mask':
+                if not mark:
+                    return self.send_json(400, {'error': 'Markieren ist nicht verfügbar (OpenCV fehlt).'})
+                n = int(self.headers.get('Content-Length') or 0)
+                if n <= 0 or n > 64 * 1024 ** 2:
+                    return self.send_json(400, {'error': 'Maske ist leer oder zu groß.'})
+                tok = secrets.token_hex(8)
+                dest = STAGE / ('mask-%s.png' % tok)
+                bb = mark.store_mask(self.rfile.read(n), dest)
+                if not bb:
+                    dest.unlink(missing_ok=True)
+                    return self.send_json(200, {'token': '', 'bbox': None})
+                MASKS[tok] = str(dest)
+                return self.send_json(200, {'token': tok, 'bbox': bb})
             if path == '/api/project/open':
                 n = int(self.headers.get('Content-Length') or 0)
                 if n <= 0 or n > 4 * 1024 ** 3:
@@ -949,6 +1047,34 @@ class Handler(BaseHTTPRequestHandler):
                 finally:
                     tmp.unlink(missing_ok=True)
             data = self.body_json()
+            if path in ('/api/mark/segment', '/api/mark/refine', '/api/mark/suggest'):
+                if not mark or mark.cv2 is None:
+                    return self.send_json(400, {'error': 'KI-Helfer sind nicht verfügbar (OpenCV fehlt).'})
+                st = clean_settings(data.get('settings'))
+                img, key = analysis_image(data.get('image'), st)
+                if path == '/api/mark/suggest':
+                    return self.send_json(200, mark.suggest(img, st['vizW'], st['vizH']))
+                if path == '/api/mark/refine':
+                    pts = data.get('points') or []
+                    if len(pts) < 2:
+                        return self.send_json(400, {'error': 'Zuerst eine Linie zeichnen.'})
+                    return self.send_json(200, {'points': mark.refine_line(img, pts, bool(data.get('closed')))})
+                bgr = mark.imread(img)
+                h, w = bgr.shape[:2]
+                pts = [[float(q[0]) * w, float(q[1]) * h] for q in (data.get('points') or [])]
+                labels = [1 if (len(q) < 3 or q[2]) else 0 for q in (data.get('points') or [])]
+                box = data.get('box')
+                box = [box[0] * w, box[1] * h, box[2] * w, box[3] * h] if box else None
+                if not pts and not box:
+                    return self.send_json(400, {'error': 'Zuerst auf das Motiv klicken.'})
+                t0 = time.time()
+                msk, method = mark.segment(SAM, key, img, pts, labels, box)
+                sid = secrets.token_hex(6)
+                out = STAGE / ('seg-%s.png' % sid)
+                mark.imwrite(out, msk)
+                SEGS[sid] = str(out)
+                return self.send_json(200, {'url': '/api/maskimg/' + sid, 'method': method, 'bbox': mark.bbox(msk),
+                                            'seconds': round(time.time() - t0, 2), 'note': (SAM.error if SAM else '')[:200]})
             if path == '/api/presets/save':
                 raw_name = str(data.get('name') or '').strip()
                 name = safe_name(raw_name)[:60] if raw_name else ''
@@ -956,7 +1082,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(400, {'error': 'Bitte einen Namen eingeben.'})
                 conf = load_config()
                 lst = [p for p in (conf.get('presets') or []) if p.get('name') != name]
-                lst.append({'name': name, 'settings': clean_settings(data.get('settings')), 'saved': time.time()})
+                ps = clean_settings(data.get('settings'))
+                ps.update({k: viz.DEFAULTS[k] for k in viz.MARK_KEYS})       # Markierung gehört nur zum Video, nicht zur Vorlage
+                lst.append({'name': name, 'settings': ps, 'saved': time.time()})
                 conf['presets'] = lst[-60:]
                 save_config(conf)
                 return self.send_json(200, {'presets': conf['presets']})
@@ -1095,7 +1223,7 @@ def open_window(url):
     for exe in candidates:
         if exe.is_file():
             try:
-                return subprocess.Popen([str(exe), '--app=' + url, '--window-size=1360,900', '--user-data-dir=' + str(HOME / 'window'),
+                return subprocess.Popen([str(exe), '--app=' + url, '--start-maximized', '--user-data-dir=' + str(HOME / 'window'),
                                          '--no-first-run', '--no-default-browser-check'])
             except OSError:
                 pass
@@ -1110,6 +1238,7 @@ class WinFrame:
         self.win = None
         self.hwnd = 0
         self.saved = None
+        self.full = None
         self.busy = False
 
     def _user32(self):
@@ -1151,7 +1280,7 @@ class WinFrame:
         vk = 0x02 if u.GetSystemMetrics(23) else 0x01
         return bool(u.GetAsyncKeyState(vk) & 0x8000)
 
-    def _work_area(self):
+    def _work_area(self, full=False):
         ctypes, wintypes, u = self._user32()
 
         class MONITORINFO(ctypes.Structure):
@@ -1162,7 +1291,7 @@ class WinFrame:
         mi = MONITORINFO()
         mi.cbSize = ctypes.sizeof(MONITORINFO)
         u.GetMonitorInfoW(u.MonitorFromWindow(self.handle(), 2), ctypes.byref(mi))
-        w = mi.rcWork
+        w = mi.rcMonitor if full else mi.rcWork
         return [w.left, w.top, w.right - w.left, w.bottom - w.top]
 
     def _scale(self):
@@ -1245,6 +1374,18 @@ class WinFrame:
     def is_max(self):
         return bool(self.saved)
 
+    def toggle_full(self):
+        """F11: ganzer Bildschirm inkl. Taskleiste – nochmal F11 (oder Esc) kehrt zurück."""
+        ctypes, wintypes, u = self._user32()
+        if self.full:
+            u.SetWindowPos(self.handle(), -2, *[int(v) for v in self.full], 0x0010)  # HWND_NOTOPMOST
+            self.full = None
+            return False
+        self.full = self._rect()
+        x, y, w, h = self._work_area(True)
+        u.SetWindowPos(self.handle(), -1, x, y, w, h, 0x0010)  # HWND_TOPMOST über die Taskleiste
+        return True
+
     def minimize(self):
         self.win.minimize()
 
@@ -1282,6 +1423,15 @@ def native_window(url):
         def close(self):
             frame.close()
 
+        def toggle_fullscreen(self):
+            try:
+                return frame.toggle_full()
+            except Exception:  # noqa: BLE001
+                return False
+
+        def is_full(self):
+            return bool(frame.full)
+
         def pick_folder(self, start=''):
             try:
                 res = frame.win.create_file_dialog(webview.FOLDER_DIALOG, directory=start or '')
@@ -1289,22 +1439,19 @@ def native_window(url):
                 return ''
             return res[0] if res else ''
 
-    big = True
-    try:
-        sc = webview.screens[0]
-        big = sc.width >= 1420 and sc.height >= 960
-    except Exception:  # noqa: BLE001
-        pass
+    # Programm startet immer bildschirmfüllend (maximiert, Taskleiste bleibt sichtbar); F11 = echtes Vollbild
     win = webview.create_window(APP_NAME, url, width=1400, height=920, min_size=(960, 620), frameless=True, easy_drag=False,
                                 background_color='#0d0a05', js_api=Api(), text_select=True)
     frame.win = win
-    if not big:
-        def fit():
-            time.sleep(0.4)
-            try:
+
+    def fit():
+        time.sleep(0.4)
+        try:
+            if not frame.is_max():
                 frame.toggle_max()
-            except Exception:  # noqa: BLE001
-                pass
+        except Exception:  # noqa: BLE001
+            pass
+    if os.name == 'nt':
         win.events.shown += lambda *a: threading.Thread(target=fit, daemon=True).start()
     try:
         webview.start(gui='edgechromium' if os.name == 'nt' else None, private_mode=False, storage_path=str(HOME / 'webview'))

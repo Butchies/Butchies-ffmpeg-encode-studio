@@ -30,9 +30,13 @@ DEFAULTS = {
     'vizX': 10.0, 'vizY': 72.0, 'vizW': 80.0, 'vizH': 24.0, 'vizDock': 'bc',
     'vizStr': 100, 'vizAlpha': 90, 'vizGlow': 45, 'vizDens': 48, 'vizSmooth': 55, 'vizLine': 3.0,
     'vizCenter': False, 'vizFloor': False, 'vizSoft': True,
+    # Markierung (gilt nur für dieses Video / Projekt, nicht für Vorlagen)
+    'vizShape': 'box', 'vizMask': '', 'vizPath': [], 'vizClosed': False, 'vizBoth': True, 'vizThick': 14.0, 'vizFeather': 0.6,
 }
+MARK_KEYS = ('vizShape', 'vizMask', 'vizPath', 'vizClosed', 'vizBoth', 'vizThick', 'vizFeather')
 LIMITS = {'vizX': (0, 95), 'vizY': (0, 98), 'vizW': (5, 100), 'vizH': (3, 100), 'vizStr': (20, 200), 'vizAlpha': (10, 100),
-          'vizGlow': (0, 100), 'vizDens': (8, 128), 'vizSmooth': (0, 100), 'vizLine': (1, 10), 'vizSeed': (0, 999999)}
+          'vizGlow': (0, 100), 'vizDens': (8, 128), 'vizSmooth': (0, 100), 'vizLine': (1, 10), 'vizSeed': (0, 999999),
+          'vizThick': (2, 60), 'vizFeather': (0, 5)}
 HEX = re.compile(r'#[0-9a-fA-F]{6}')
 
 
@@ -40,7 +44,17 @@ def clean(s, out):
     """Visualizer-Einstellungen prüfen (out = bereits bereinigte Einstellungen, wird ergänzt)."""
     for k, v in DEFAULTS.items():
         val = (s or {}).get(k, v)
-        if isinstance(v, bool):
+        if k == 'vizPath':
+            pts = []
+            for q in (val if isinstance(val, list) else [])[:400]:
+                try:
+                    pts.append([min(max(float(q[0]), -0.2), 1.2), min(max(float(q[1]), -0.2), 1.2)])
+                except (TypeError, ValueError, IndexError):
+                    pass
+            val = pts
+        elif k in ('vizShape', 'vizMask'):
+            val = str(val or '')
+        elif isinstance(v, bool):
             val = bool(val)
         elif k in LIMITS:
             try:
@@ -60,6 +74,14 @@ def clean(s, out):
         if not HEX.fullmatch(str(out[k])):
             out[k] = DEFAULTS[k]
     out['vizDock'] = str(out.get('vizDock') or '')[:12]
+    if out['vizShape'] not in ('box', 'mask', 'path'):
+        out['vizShape'] = 'box'
+    if not re.fullmatch(r'[0-9a-f]{0,32}', out['vizMask']):
+        out['vizMask'] = ''
+    if out['vizShape'] == 'mask' and not out['vizMask']:
+        out['vizShape'] = 'box'
+    if out['vizShape'] == 'path' and len(out['vizPath']) < 2:
+        out['vizShape'] = 'box'
     out['vizW'] = min(out['vizW'], 100 - out['vizX'])
     out['vizH'] = min(out['vizH'], 100 - out['vizY'])
     return out
@@ -141,12 +163,17 @@ class G:
         self.parts.append(s)
 
 
-def graph(s, W, H, fps, dur, cmdfile=None):
-    """Liefert (Filter-Teile, x, y) – die Teile erzeugen aus [av] den Visualizer [wv] (mit Transparenz)."""
+def graph(s, W, H, fps, dur, cmdfile=None, extra=None):
+    """Liefert (Filter-Teile, x, y) – die Teile erzeugen aus [av] den Visualizer [wv] (mit Transparenz).
+    extra: {'mask': '[2:v]'} oder {'path': {'xm': '[2:v]', 'ym': '[3:v]', 'L', 'T', 'ox', 'oy', 'bw', 'bh', 'closed'}}"""
     g = G()
+    extra = extra or {}
+    path = extra.get('path')
     vw, vh = even(W * s['vizW'] / 100), even(H * s['vizH'] / 100)
     ox, oy = int(W * s['vizX'] / 100), int(H * s['vizY'] / 100)
     ox, oy = min(ox, W - vw), min(oy, H - vh)
+    if path:
+        vw, vh = even(path['L']), even(path['T'])       # erst als gerader Streifen rendern …
     st = s['vizStyle']
     dens = int(s['vizDens'])
     avg = int(round(s['vizSmooth'] / 100 * 8))
@@ -283,8 +310,22 @@ def graph(s, W, H, fps, dur, cmdfile=None):
         mode = {'wave': 'cline', 'line': 'p2p', 'neon': 'p2p', 'dots': 'point'}.get(st, 'cline')
         g.add('%s%s' % (waves(src, vw, vh, mode, 1 if st == 'wave' else th), raw))
 
-    # Leuchten
     cur = raw
+    if path:                                              # … dann entlang der Linie / des Rings biegen
+        if s['vizSoft'] and not path['closed']:
+            sm, tmp = g.lab('m'), g.lab()
+            e = max(2, vw * 0.08)
+            g.add("color=c=black:s=%dx%d:r=%d:d=1,format=gray,geq=lum='255*min(1\\,min(X\\,W-1-X)/%.2f)',"
+                  "trim=end_frame=1,loop=loop=-1:size=1,setpts=N/%d/TB,trim=duration=%.3f%s" % (vw, vh, fps, e, fps, dur + 1, sm))
+            g.add('%s%sblend=all_mode=multiply:shortest=1%s' % (cur, sm, tmp))
+            cur = tmp
+        xm, ym, bent = g.lab('x'), g.lab('y'), g.lab()
+        for src_lab, dst in ((path['xm'], xm), (path['ym'], ym)):
+            g.add('%sloop=loop=-1:size=1,setpts=N/%d/TB,trim=duration=%.3f,format=gray16%s' % (src_lab, fps, dur + 1, dst))
+        g.add('%s%s%sremap=fill=black,format=gray%s' % (cur, xm, ym, bent))
+        cur = bent
+        vw, vh, ox, oy = path['bw'], path['bh'], path['ox'], path['oy']
+    # Leuchten
     if glow > 0:
         a, b, c, d = g.lab(), g.lab(), g.lab(), g.lab()
         g.add('%ssplit=2%s%s' % (cur, a, b))
@@ -297,7 +338,7 @@ def graph(s, W, H, fps, dur, cmdfile=None):
     # Deckkraft + weiche Ränder -> Alpha
     alpha = g.lab('al')
     chain = "%slut=c0='val*%.2f'" % (cur, s['vizAlpha'] / 100)
-    if s['vizSoft']:
+    if s['vizSoft'] and not path and not extra.get('mask'):
         sm = g.lab('m')
         e = max(2, vw * 0.12)
         g.add("color=c=black:s=%dx%d:r=%d:d=1,format=gray,geq=lum='255*min(1\\,min(X\\,W-1-X)/%.2f)',"
@@ -319,5 +360,10 @@ def graph(s, W, H, fps, dur, cmdfile=None):
     g.add('gradients=s=%dx%d:%s:nb_colors=%d:x0=0:y0=0:x1=%d:y1=0:r=%d:d=1:speed=0.00001,trim=end_frame=1,'
           'loop=loop=-1:size=1,setpts=N/%d/TB,trim=duration=%.3f,format=yuv420p%s%s' % (
               vw, vh, cs, max(2, len(cols[:8])), vw, fps, fps, dur + 1, hue, col))
+    if extra.get('mask'):                                 # nur innerhalb der markierten Fläche
+        mk, al2 = g.lab('k'), g.lab('al')
+        g.add('%sloop=loop=-1:size=1,setpts=N/%d/TB,trim=duration=%.3f,format=gray,scale=%d:%d%s' % (extra['mask'], fps, dur + 1, vw, vh, mk))
+        g.add('%s%sblend=all_mode=multiply:shortest=1%s' % (alpha, mk, al2))
+        alpha = al2
     g.add('%s%salphamerge,format=yuva420p[wv]' % (col, alpha))
     return g.parts, ox, oy

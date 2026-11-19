@@ -463,9 +463,44 @@ dialog[open]{animation:dlg .3s ease}
 .load-tools{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 @media (max-width:1280px){.viz-tiles{grid-template-columns:repeat(5,minmax(0,1fr))}}
 
+
+/* ---------- Markieren (Fläche / Linie / Ring) ---------- */
+.markbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.mk-modes{flex:0 0 auto}
+.mk-modes button{padding:0 14px}
+.mk-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0}
+.mk-tools .seg button{padding:0 10px;font-size:12.5px;min-height:34px}
+.mk-tools label.mini{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--muted)}
+.mk-tools label.mini input[type=range]{width:110px;flex:none}
+.btn.ai{border-color:color-mix(in srgb,var(--b) 55%,transparent);background:linear-gradient(110deg,color-mix(in srgb,var(--a) 18%,transparent),color-mix(in srgb,var(--b) 14%,transparent))}
+.btn.ai[aria-pressed=true]{box-shadow:inset 0 0 0 2px var(--b)}
+.markcanvas{position:absolute;inset:0;width:100%;height:100%;z-index:4;cursor:crosshair;touch-action:none}
+.marksvg{position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;overflow:visible}
+.frame.mk-line .marksvg,.frame.mk-ring .marksvg{pointer-events:auto;cursor:crosshair}
+.marksvg .pt{fill:var(--b);stroke:#111;stroke-width:2;cursor:move}
+.sugbox{position:absolute;inset:0;z-index:5}
+.sug{position:absolute;border:2px dashed var(--b);border-radius:8px;background:color-mix(in srgb,var(--a) 16%,transparent);display:flex;align-items:flex-start;justify-content:flex-start;padding:6px;cursor:pointer;color:#fff;font-size:12px;font-weight:700;text-align:left}
+.sug:hover{background:color-mix(in srgb,var(--a) 32%,transparent)}
+.sug span{background:rgba(0,0,0,.65);padding:3px 8px;border-radius:6px;line-height:1.35}
+.mk-hint{margin-top:-4px}
+.mk-busy{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.mk-busy .spin{width:16px;height:16px;border-width:2px;border-color:color-mix(in srgb,var(--text) 25%,transparent);border-top-color:var(--a)}
+.vizbox.locked{cursor:default}
+.vizbox.locked .vb-h{display:none}
+
+/* ---------- 1920 × 1080: alles auf einen Blick, Spalten scrollen einzeln ---------- */
+html,body{height:100%}
+.layout{height:100%;overflow:hidden;align-items:stretch}
+.layout>.col{overflow-y:auto;min-height:0;padding-bottom:18px;scrollbar-width:thin}
+.layout>.col::-webkit-scrollbar{display:block;width:6px}
+.layout>.col::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--text) 18%,transparent);border-radius:6px}
+@media (min-width:1600px){.layout{grid-template-columns:340px minmax(0,1fr) 370px}}
+.stage{height:clamp(240px,calc(100vh - 470px),520px)}
+
 /* ---------- kleinere Fenster ---------- */
 @media (max-width:1280px){
- .layout{grid-template-columns:minmax(290px,1fr) minmax(0,1.6fr)}
+ .layout{grid-template-columns:minmax(290px,1fr) minmax(0,1.6fr);overflow:auto;height:auto}
+ .layout>.col{overflow:visible}
  .layout>.col:last-child{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start}
  .brand small{display:none}
 }
@@ -474,3 +509,6 @@ dialog[open]{animation:dlg .3s ease}
  .top-actions .lbl{display:none}
  .pg-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+#markBar .seg button,#markBar .btn{white-space:nowrap}
+#markBar .seg button{padding-inline:12px}

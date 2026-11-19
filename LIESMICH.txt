@@ -22,6 +22,21 @@ Audio-Visualizer (ab 1.1.0)
   und 3 Bändern ein (abschaltbar in der Werkstatt).
 - „Vorschau mit Ton“ rendert 6 Sekunden genau so, wie es im Video aussieht.
 
+Visualizer-Platz markieren (ab 1.2.0)
+-------------------------------------
+Über der Vorschau: Kasten · Fläche · Linie · Ring. Die Markierung ist im fertigen Video
+unsichtbar und gilt nur für dieses Video (im Projekt wird sie mitgespeichert, in Vorlagen nicht).
+- Fläche: mit Pinsel/Radierer/Rechteck/Ellipse malen – der Visualizer erscheint nur dort.
+  ✨ KI-Auswahl: auf ein Motiv klicken, die KI erkennt es. Umschalt- oder Rechtsklick nimmt weg.
+- Linie: Punkte klicken, Doppelklick beendet. ✨ KI verfeinern legt sie an die nächste Kante.
+- Ring: Mitte klicken und Radius aufziehen – oder ✨ Motiv antippen.
+- Kasten: ✨ KI-Platzvorschlag zeigt 3 ruhige Stellen im Bild.
+Die KI (MobileSAM) läuft komplett auf deinem PC, nichts wird ins Internet geschickt.
+
+Fenster
+-------
+Das Programm startet bildschirmfüllend. F11 = Vollbild ohne Taskleiste, F11 oder Esc = zurück.
+
 Vorlagen & Projekte
 -------------------
 - „Speichern …“: als Vorlage (nur Einstellungen) oder als Projekt (.fesproj mit Song und Bild).
@@ -49,4 +64,6 @@ Mitgeliefert
 - FFmpeg + FFprobe (GPL-Build von https://github.com/BtbN/FFmpeg-Builds, Lizenz im Ordner „ffmpeg“,
   Quellcode: https://ffmpeg.org) mit x264, x265, AAC, NVENC, Quick Sync und AMF.
 - Microsoft WebView2 (wird nur installiert, falls es auf dem PC fehlt; unter Windows 10/11 meist schon da).
+- KI-Modell MobileSAM (https://github.com/ChaoningZhang/MobileSAM, ONNX von
+  https://huggingface.co/Acly/MobileSAM, MIT-Lizenz) + ONNX Runtime (MIT) + OpenCV (Apache 2.0).
 - Schriften der Butchies-Webseite (SIL Open Font License, Lizenzen im Programmordner unter ui\fonts).

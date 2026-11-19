@@ -1,7 +1,7 @@
 name: ffmpeg_encode Studio – Windows-Installer
 
 # Baut auf einem echten Windows-Rechner von GitHub: Programm (PyInstaller) + FFmpeg mit allen Codecs
-# + WebView2-Installer -> testet das fertige Programm mit 2 echten Videos -> Inno-Setup-Installer -> Release.
+# + WebView2-Installer -> testet das fertige Programm mit echten Videos + KI-Test -> Inno-Setup-Installer -> Release.
 on:
   push:
     branches: [main]
@@ -25,10 +25,24 @@ jobs:
 
       - name: Programm bauen (PyInstaller)
         run: |
-          python -m pip install --upgrade pip pyinstaller pywebview
+          python -m pip install --upgrade pip pyinstaller pywebview numpy opencv-python-headless
+          # KI läuft über DirectML auf jeder Grafikkarte (NVIDIA, AMD, Intel), sonst auf dem Prozessor
+          python -m pip install onnxruntime-directml
+          if ($LASTEXITCODE -ne 0) { python -m pip install onnxruntime }
+          python -c "import onnxruntime as o, cv2, numpy; print('onnxruntime', o.__version__, o.get_available_providers(), 'opencv', cv2.__version__)" | Tee-Object -FilePath build.log
           python -m PyInstaller --onedir --noconsole --noconfirm --name ffmpeg_encode_Studio --icon icon.ico `
-            --add-data "ui;ui" --collect-all webview --hidden-import clr ffmpeg_encode_studio.py 2>&1 | Tee-Object -FilePath build.log
+            --add-data "ui;ui" --collect-all webview --hidden-import clr --hidden-import mark --hidden-import viz `
+            --collect-all onnxruntime --collect-submodules cv2 ffmpeg_encode_studio.py 2>&1 | Tee-Object -FilePath build.log -Append
           if (!(Test-Path dist\ffmpeg_encode_Studio\ffmpeg_encode_Studio.exe)) { exit 1 }
+
+      - name: KI-Modell holen (MobileSAM, MIT-Lizenz, offline nutzbar)
+        run: |
+          New-Item -ItemType Directory -Force dist\ffmpeg_encode_Studio\models | Out-Null
+          foreach ($f in 'mobile_sam_image_encoder.onnx', 'sam_mask_decoder_single.onnx') {
+            Invoke-WebRequest -UseBasicParsing "https://huggingface.co/Acly/MobileSAM/resolve/main/$f" -OutFile "dist\ffmpeg_encode_Studio\models\$f"
+            "$f : $((Get-Item dist\ffmpeg_encode_Studio\models\$f).Length) Bytes" | Tee-Object -FilePath model.log -Append
+          }
+          "MobileSAM (https://github.com/ChaoningZhang/MobileSAM), ONNX-Export: https://huggingface.co/Acly/MobileSAM - MIT-Lizenz" | Out-File -Encoding utf8 dist\ffmpeg_encode_Studio\models\LIZENZ.txt
 
       - name: FFmpeg mit allen Codecs holen (x264, x265, AAC, NVENC, Quick Sync, AMF)
         run: |
@@ -49,7 +63,7 @@ jobs:
       - name: WebView2-Installer holen
         run: Invoke-WebRequest -UseBasicParsing 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile MicrosoftEdgeWebview2Setup.exe
 
-      - name: Echter Test – Programm starten und 2 Videos konvertieren
+      - name: Echter Test – Programm starten, Videos konvertieren, KI-Auswahl + Markierungen prüfen
         run: |
           Copy-Item -Recurse ffmpeg dist\ffmpeg_encode_Studio\ffmpeg
           $exe = (Resolve-Path dist\ffmpeg_encode_Studio\ffmpeg_encode_Studio.exe).Path

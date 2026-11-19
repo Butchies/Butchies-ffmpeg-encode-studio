@@ -342,7 +342,7 @@ function vizFrame(ts) {
   if (!S.settings || !S.settings.viz || document.hidden || ts - lastFrame < 70) return;
   lastFrame = ts; VT += 0.08;
   if (LIVE.an && !aud.paused) { LIVE.an.getByteFrequencyData(LIVE.freq); LIVE.an.getByteTimeDomainData(LIVE.time); LIVE.on = true } else LIVE.on = false;
-  drawVizBox();
+  if (S.settings.vizShape === 'path' || MK.mode === 'line' || MK.mode === 'ring') drawMarkSvg(); else drawVizBox();
 }
 requestAnimationFrame(vizFrame);
 function drawVizBox() {
@@ -353,18 +353,25 @@ function drawVizBox() {
   const glow = s.vizStyle === 'neon' || s.vizStyle === 'glowbars' ? Math.max(s.vizGlow, 65) : s.vizGlow;
   svg.style.opacity = s.vizAlpha / 100;
   svg.style.filter = glow > 0 ? `drop-shadow(0 0 ${Math.round(glow / 8)}px ${colorAt(s, 0.3, VT)}) drop-shadow(0 0 ${Math.round(glow / 4)}px ${colorAt(s, 0.7, VT)})` : 'none';
-  const m = s.vizSoft ? 'linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%)' : 'none';
+  let m = s.vizSoft ? 'linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%)' : 'none', ms = '', mp = '';
+  if (s.vizShape === 'mask' && maskUrl) {
+    m = `url(${maskUrl})`; ms = `${(100 / s.vizW * 100).toFixed(2)}% ${(100 / s.vizH * 100).toFixed(2)}%`;
+    mp = `${s.vizW >= 99.9 ? 0 : (s.vizX / (100 - s.vizW) * 100).toFixed(2)}% ${s.vizH >= 99.9 ? 0 : (s.vizY / (100 - s.vizH) * 100).toFixed(2)}%`;
+  }
   svg.style.webkitMaskImage = m; svg.style.maskImage = m;
+  svg.style.webkitMaskSize = svg.style.maskSize = ms; svg.style.webkitMaskPosition = svg.style.maskPosition = mp;
+  svg.style.webkitMaskRepeat = svg.style.maskRepeat = 'no-repeat';
 }
 function placeVizBox() {
   const s = S.settings, box = $('#vizBox');
-  box.hidden = !s.viz; $('#vizHint').hidden = !s.viz;
+  box.hidden = !s.viz || s.vizShape === 'path'; $('#vizHint').hidden = !s.viz || MK.mode !== 'box';
+  box.classList.toggle('locked', s.vizShape === 'mask');
   box.style.left = s.vizX + '%'; box.style.top = s.vizY + '%'; box.style.width = s.vizW + '%'; box.style.height = s.vizH + '%';
   box.classList.toggle('low', s.vizY < 8);
   const st = VSTYLES.find(x => x[0] === s.vizStyle) || VSTYLES[0];
   $('#vbLabel').textContent = st[1] + (s.vizDock ? ' · ' + dockName(s.vizDock) : ' · frei');
   $('#dockStatus').textContent = s.vizDock ? 'Angedockt: ' + dockName(s.vizDock) : 'Frei platziert';
-  if (s.viz) drawVizBox();
+  if (s.viz && s.vizShape !== 'path') drawVizBox();
 }
 function renderViz(force) {
   if (!S.settings) return;
@@ -398,6 +405,7 @@ function renderViz(force) {
   BANDS.forEach(q => bl.append(el('button', { type: 'button', 'aria-pressed': String(s.vizDock === q[0]), onclick: () => goDock(q[0]) }, q[1] + ' – ganze Breite')));
   renderSliders($('#quickSliders'), SLIDERS.slice(0, 3), false);
   if ($('#vizDlg').open) renderWorkshop();
+  renderMark();
 }
 function renderSliders(box, list, hints) {
   if (box.contains(document.activeElement) && document.activeElement.type === 'range') { list.forEach(([k, , , , , f]) => { const b = box.querySelector(`[data-k="${k}"]`); if (b) b.textContent = f(S.settings[k]) }); return }
@@ -439,7 +447,7 @@ $('#vizWorkshop').onclick = () => { renderWorkshop(); $('#vizDlg').showModal() }
 /* Ziehen, Skalieren, Einrasten im Vorschaubild */
 let DRAG = null;
 $('#vizBox').addEventListener('pointerdown', e => {
-  if (e.button !== 0) return; e.preventDefault();
+  if (e.button !== 0 || S.settings.vizShape === 'mask') return; e.preventDefault();
   const fr = $('#frame').getBoundingClientRect(), s = S.settings, h = e.target.dataset && e.target.dataset.h;
   DRAG = { mode: h || 'move', px: e.clientX, py: e.clientY, x: s.vizX, y: s.vizY, w: s.vizW, h: s.vizH, fw: fr.width, fh: fr.height, dock: s.vizDock };
   $('#vizBox').setPointerCapture(e.pointerId);
@@ -525,7 +533,8 @@ function renderPresets() {
     el('i', { style: 'background:' + presetSwatch(p.settings) }), p.name, el('small', {}, presetSub(p.settings)))));
 }
 function applyPreset(p) {
-  S.settings = Object.assign({}, S.settings, p.settings, { start: S.settings.start, end: S.settings.end });
+  const keep = {}; ['vizShape', 'vizMask', 'vizPath', 'vizClosed', 'vizBoth', 'vizThick', 'vizFeather', 'start', 'end'].forEach(k => keep[k] = S.settings[k]);
+  S.settings = Object.assign({}, S.settings, p.settings, keep);
   changed('fmt'); renderViz(true); toast('✓ Vorlage geladen: ' + p.name);
 }
 let saveKind = 'settings';
@@ -580,6 +589,7 @@ async function loadProject(promise) {
     const d = await promise;
     for (const k of ['audio', 'image']) { const old = S[k]; if (old && old.token !== d[k].token) api('/api/unstage', { token: old.token }).catch(() => {}) }
     S.settings = Object.assign({}, S.settings, d.settings);
+    MK.mode = modeFromSettings(); await loadMaskFromServer(S.settings.vizShape === 'mask' ? S.settings.vizMask : '');
     adopt(d.audio, true); adopt(d.image, true);
     changed('fmt'); renderViz(true);
     if ($('#loadDlg').open) $('#loadDlg').close();
@@ -594,6 +604,267 @@ $('#loadBtn').onclick = openLoad;
 $('#openProjFile').onclick = () => $('#projInput').click();
 $('#projInput').onchange = e => { if (e.target.files[0]) openProjectFile(e.target.files[0]); e.target.value = '' };
 $('#showProjDir').onclick = () => api('/api/show', { path: S.projDir || S.outdir }).catch(e => toast(e.message, true));
+
+
+/* ---------- Markieren: Fläche malen, Linie, Ring (+ KI) ---------- */
+const MK = { mode: 'box', tool: 'brush', size: 36, aiPts: [], aiBase: null, ringAi: false, drawing: false, last: null, start: null, line: [], busy: '', drag: -1, sugTimer: 0 };
+const maskC = document.createElement('canvas');
+let maskUrl = '';
+const isTall = () => fmtOf(S.settings.fmt)[3];
+function maskSize() { return isTall() ? [540, 960] : [960, 540] }
+function ensureMask() {
+  const [w, h] = maskSize();
+  if (maskC.width !== w || maskC.height !== h) {
+    const old = maskC.width ? (() => { const c = document.createElement('canvas'); c.width = maskC.width; c.height = maskC.height; c.getContext('2d').drawImage(maskC, 0, 0); return c })() : null;
+    maskC.width = w; maskC.height = h;
+    if (old) maskC.getContext('2d').drawImage(old, 0, 0, w, h);
+    const v = $('#markCanvas'); v.width = w; v.height = h;
+  }
+}
+function modeFromSettings() { const s = S.settings; return s.vizShape === 'mask' ? 'mask' : s.vizShape === 'path' ? (s.vizClosed ? 'ring' : 'line') : 'box' }
+function frameSize() { const r = $('#frame').getBoundingClientRect(); return [r.width || 1, r.height || 1] }
+function busy(text) { MK.busy = text || ''; renderMarkTools() }
+
+function renderMark() {
+  if (!S.settings) return;
+  const s = S.settings, on = s.viz;
+  $('#markBar').hidden = !on;
+  ensureMask();
+  $$('#mkModes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === MK.mode)));
+  const fr = $('#frame');
+  fr.classList.toggle('mk-line', on && MK.mode === 'line'); fr.classList.toggle('mk-ring', on && MK.mode === 'ring');
+  $('#markCanvas').hidden = !(on && MK.mode === 'mask');
+  renderMaskOverlay(); renderMarkTools(); drawMarkSvg(); markHint();
+}
+function markHint() {
+  const s = S.settings, h = $('#mkHint');
+  const t = {
+    box: 'Kasten: im Bild ziehen und an den Ecken skalieren. ✨ KI-Platzvorschlag findet ruhige Stellen.',
+    mask: MK.tool === 'ai' ? '✨ KI-Auswahl: auf das Motiv klicken = dazunehmen · Umschalt- oder Rechtsklick = wegnehmen · mehrere Klicks verfeinern.'
+      : 'Fläche malen: Der Visualizer erscheint nur in der markierten Fläche. Die Markierung ist im fertigen Video unsichtbar.',
+    line: MK.line.length ? 'Weiter klicken für neue Punkte · Doppelklick (oder „Fertig“) beendet die Linie.' : s.vizShape === 'path' && !s.vizClosed ? 'Punkte ziehen zum Anpassen · ✨ KI verfeinern legt die Linie an die nächste Kante im Bild.' : 'Klicke Punkte entlang der Stelle, an der die Balken stehen sollen · Doppelklick beendet.',
+    ring: MK.ringAi ? '✨ Klick jetzt auf das Motiv – die KI legt den Ring passend darum.' : 'In die Mitte klicken und den Radius aufziehen – oder ✨ „Motiv antippen“.'
+  }[MK.mode];
+  const none = (MK.mode === 'mask' && s.vizShape !== 'mask') || ((MK.mode === 'line' || MK.mode === 'ring') && s.vizShape !== 'path' && !MK.line.length);
+  h.hidden = !s.viz; h.textContent = t + (none && MK.mode !== 'box' ? ' (Noch nichts markiert – bis dahin gilt der Kasten.)' : '');
+}
+function renderMarkTools() {
+  const box = $('#mkTools'); box.textContent = '';
+  const s = S.settings, ai = S.info && S.info.ai;
+  const btn = (label, fn, cls = '', extra = {}) => el('button', Object.assign({ type: 'button', class: 'btn small ' + cls, onclick: fn }, extra), label);
+  const slider = (label, k, min, max, step, fmt) => { const i = el('input', { type: 'range', min, max, step, value: k === 'size' ? MK.size : s[k], 'aria-label': label }); const b = el('b', {}, fmt(k === 'size' ? MK.size : s[k])); i.oninput = () => { if (k === 'size') MK.size = +i.value; else { s[k] = +i.value; drawMarkSvg(); saveSettings(); refreshCommand() } b.textContent = fmt(+i.value) }; return el('label', { class: 'mini' }, label, i, b) };
+  if (MK.busy) box.append(el('span', { class: 'mk-busy' }, el('span', { class: 'spin' }), MK.busy));
+  if (MK.mode === 'box') {
+    box.append(btn('✨ KI-Platzvorschlag', suggestPlaces, 'ai', { disabled: !S.image || !(ai && ai.tools) }));
+  } else if (MK.mode === 'mask') {
+    const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Werkzeug' });
+    [['brush', 'Pinsel'], ['erase', 'Radierer'], ['rect', 'Rechteck'], ['ellipse', 'Ellipse'], ['ai', '✨ KI-Auswahl']].forEach(([id, n]) =>
+      seg.append(el('button', { type: 'button', 'aria-pressed': String(MK.tool === id), disabled: id === 'ai' && !(ai && ai.tools), onclick: () => { MK.tool = id; MK.aiPts = []; MK.aiBase = null; renderMarkTools(); markHint() } }, n)));
+    box.append(seg);
+    if (MK.tool === 'brush' || MK.tool === 'erase') box.append(slider('Größe', 'size', 6, 160, 2, v => v + ' px'));
+    if (MK.tool === 'ai' && MK.aiPts.length) box.append(btn('Neue KI-Auswahl', () => { MK.aiPts = []; MK.aiBase = null; renderMarkTools() }));
+    box.append(slider('Weiche Kante', 'vizFeather', 0, 5, 0.1, v => String(v).replace('.', ',') + ' %'));
+    box.append(btn('Alles löschen', () => { maskC.getContext('2d').clearRect(0, 0, maskC.width, maskC.height); MK.aiPts = []; MK.aiBase = null; renderMaskOverlay(); uploadMask() }));
+  } else {
+    if (MK.mode === 'line') {
+      if (MK.line.length) box.append(btn('Fertig', finishLine, 'glow'));
+      box.append(btn('✨ KI verfeinern', refineLine, 'ai', { disabled: !(s.vizShape === 'path' && !s.vizClosed) || !(ai && ai.tools) }));
+      box.append(btn('Neu zeichnen', () => { MK.line = []; if (s.vizShape === 'path') { s.vizShape = 'box'; changed('viz') } else renderMark() }));
+    } else {
+      box.append(btn('✨ Motiv antippen', () => { MK.ringAi = !MK.ringAi; renderMarkTools(); markHint() }, 'ai', { 'aria-pressed': String(MK.ringAi), disabled: !S.image || !(ai && ai.tools) }));
+    }
+    const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Richtung' });
+    [[false, MK.mode === 'ring' ? 'Nach außen' : 'Nach oben'], [true, 'Beidseitig']].forEach(([v, n]) => seg.append(el('button', { type: 'button', 'aria-pressed': String(s.vizBoth === v), onclick: () => set('vizBoth', v) }, n)));
+    box.append(seg, slider('Dicke', 'vizThick', 3, 40, 1, v => v + ' %'));
+  }
+}
+$$('#mkModes button').forEach(b => b.onclick = () => {
+  const m = b.dataset.m, s = S.settings; MK.mode = m; MK.line = []; MK.ringAi = false; $('#sugBox').hidden = true;
+  if (m === 'box') s.vizShape = 'box';
+  else if (m === 'mask') { if (s.vizMask) s.vizShape = 'mask' }
+  else if (s.vizPath && s.vizPath.length > 1 && s.vizClosed === (m === 'ring')) s.vizShape = 'path';
+  else if (s.vizShape !== 'box') s.vizShape = 'box';
+  changed('viz');
+});
+
+/* Fläche malen */
+function renderMaskOverlay() {
+  const v = $('#markCanvas'), g = v.getContext('2d');
+  g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, v.width, v.height); g.drawImage(maskC, 0, 0);
+  g.globalCompositeOperation = 'source-in'; g.fillStyle = 'rgba(255,90,170,.45)'; g.fillRect(0, 0, v.width, v.height);
+  g.globalCompositeOperation = 'source-over';
+}
+function cpos(e) { const v = $('#markCanvas'), r = v.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * v.width, (e.clientY - r.top) / r.height * v.height] }
+function stroke(a, b) {
+  const g = maskC.getContext('2d'); g.globalCompositeOperation = MK.tool === 'erase' ? 'destination-out' : 'source-over';
+  g.strokeStyle = g.fillStyle = '#fff'; g.lineCap = 'round'; g.lineWidth = MK.size * maskC.width / 960;
+  g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+  g.beginPath(); g.arc(b[0], b[1], g.lineWidth / 2, 0, Math.PI * 2); g.fill(); g.globalCompositeOperation = 'source-over';
+}
+function shapePath(g, a, b) { g.beginPath(); if (MK.tool === 'rect') g.rect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])); else g.ellipse((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.abs(b[0] - a[0]) / 2, Math.abs(b[1] - a[1]) / 2, 0, 0, Math.PI * 2) }
+$('#markCanvas').addEventListener('contextmenu', e => e.preventDefault());
+$('#markCanvas').addEventListener('pointerdown', e => {
+  e.preventDefault(); const p = cpos(e);
+  if (MK.tool === 'ai') { aiClick(p[0] / maskC.width, p[1] / maskC.height, !(e.shiftKey || e.button === 2)); return }
+  $('#markCanvas').setPointerCapture(e.pointerId); MK.drawing = true; MK.last = p; MK.start = p;
+  if (MK.tool === 'brush' || MK.tool === 'erase') { stroke(p, p); renderMaskOverlay() }
+});
+$('#markCanvas').addEventListener('pointermove', e => {
+  if (!MK.drawing) return; const p = cpos(e);
+  if (MK.tool === 'brush' || MK.tool === 'erase') { stroke(MK.last, p); MK.last = p; renderMaskOverlay() }
+  else { renderMaskOverlay(); const g = $('#markCanvas').getContext('2d'); shapePath(g, MK.start, p); g.fillStyle = 'rgba(255,90,170,.45)'; g.fill(); g.strokeStyle = '#fff'; g.setLineDash([6, 4]); g.stroke(); g.setLineDash([]) }
+});
+$('#markCanvas').addEventListener('pointerup', e => {
+  if (!MK.drawing) return; MK.drawing = false; const p = cpos(e);
+  if (MK.tool === 'rect' || MK.tool === 'ellipse') { const g = maskC.getContext('2d'); shapePath(g, MK.start, p); g.fillStyle = '#fff'; g.fill() }
+  renderMaskOverlay(); uploadMask();
+});
+const uploadMask = debounce(async () => {
+  try {
+    const blob = await new Promise(r => maskC.toBlob(r, 'image/png'));
+    const r = await fetch('/api/mark/mask', { method: 'POST', headers: { 'X-Studio': TOKEN }, body: blob });
+    const d = await r.json(); if (!r.ok) throw new Error(d.error);
+    const s = S.settings;
+    if (d.token) { maskUrl = maskC.toDataURL('image/png'); Object.assign(s, { vizShape: 'mask', vizMask: d.token, vizX: d.bbox[0], vizY: d.bbox[1], vizW: Math.max(2, d.bbox[2]), vizH: Math.max(2, d.bbox[3]), vizDock: '' }) }
+    else { s.vizShape = 'box'; s.vizMask = ''; maskUrl = '' }
+    changed('viz');
+  } catch (e) { toast('Maske: ' + e.message, true) }
+}, 350);
+async function loadMaskFromServer(tok) {
+  ensureMask(); const g = maskC.getContext('2d'); g.clearRect(0, 0, maskC.width, maskC.height);
+  if (!tok) { maskUrl = ''; renderMaskOverlay(); return }
+  try {
+    const blob = await (await fetch('/api/maskfile/' + tok, { headers: { 'X-Studio': TOKEN } })).blob();
+    const img = await createImageBitmap(blob); grayToAlpha(img, g); maskUrl = maskC.toDataURL('image/png'); renderMaskOverlay(); placeVizBox();
+  } catch (_) {}
+}
+function grayToAlpha(img, g) {
+  const t = document.createElement('canvas'); t.width = maskC.width; t.height = maskC.height;
+  const tg = t.getContext('2d'); tg.drawImage(img, 0, 0, t.width, t.height);
+  const d = tg.getImageData(0, 0, t.width, t.height), a = d.data;
+  for (let i = 0; i < a.length; i += 4) { const v = a[i]; a[i] = a[i + 1] = a[i + 2] = 255; a[i + 3] = v }
+  tg.putImageData(d, 0, 0); g.globalCompositeOperation = 'source-over'; g.drawImage(t, 0, 0);
+}
+async function aiClick(x, y, add) {
+  if (!S.image) { toast('Zuerst ein Bild hineinziehen'); return }
+  if (!MK.aiPts.length) { MK.aiBase = document.createElement('canvas'); MK.aiBase.width = maskC.width; MK.aiBase.height = maskC.height; MK.aiBase.getContext('2d').drawImage(maskC, 0, 0) }
+  MK.aiPts.push([x, y, add ? 1 : 0]);
+  busy('KI erkennt das Motiv …');
+  try {
+    const d = await api('/api/mark/segment', { image: S.image.token, settings: S.settings, points: MK.aiPts });
+    const img = await createImageBitmap(await (await fetch(d.url, { headers: { 'X-Studio': TOKEN } })).blob());
+    const g = maskC.getContext('2d'); g.clearRect(0, 0, maskC.width, maskC.height); g.drawImage(MK.aiBase, 0, 0); grayToAlpha(img, g);
+    renderMaskOverlay(); uploadMask();
+    if (d.method !== 'ki' && !MK.warned) { MK.warned = true; toast('Hinweis: KI-Modell nicht gefunden – einfache Erkennung benutzt. Mit Pinsel/Radierer nachbessern.') }
+  } catch (e) { toast(e.message, true); MK.aiPts.pop() }
+  finally { busy('') }
+}
+
+/* Linie & Ring */
+function spos(e) { const r = $('#frame').getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height] }
+$('#markSvg').addEventListener('pointerdown', e => {
+  const s = S.settings; if (!s.viz || (MK.mode !== 'line' && MK.mode !== 'ring')) return;
+  e.preventDefault(); const p = spos(e);
+  if (e.target.classList.contains('pt') && !MK.line.length) { MK.drag = +e.target.dataset.i; $('#markSvg').setPointerCapture(e.pointerId); return }
+  if (MK.mode === 'line') {
+    const [fw, fh] = frameSize(), q = MK.line[MK.line.length - 1], now = performance.now();
+    if (q && now - MK.lastTap < 450 && Math.hypot((p[0] - q[0]) * fw, (p[1] - q[1]) * fh) < 10) { finishLine(); return }
+    MK.lastTap = now; MK.line.push(p); drawMarkSvg(); renderMarkTools(); markHint(); return
+  }
+  if (MK.ringAi) { ringFromAi(p); return }
+  MK.start = p; MK.drawing = true; $('#markSvg').setPointerCapture(e.pointerId);
+});
+$('#markSvg').addEventListener('pointermove', e => {
+  const s = S.settings, p = spos(e);
+  if (MK.drag >= 0) { s.vizPath[MK.drag] = p; drawMarkSvg(); return }
+  if (MK.drawing && MK.mode === 'ring') { setRing(MK.start, p); drawMarkSvg() }
+});
+$('#markSvg').addEventListener('pointerup', () => {
+  if (MK.drag >= 0) { MK.drag = -1; changed('viz'); return }
+  if (MK.drawing) { MK.drawing = false; changed('viz') }
+});
+function setRing(c, p) {
+  const [fw, fh] = frameSize(), r = Math.max(8, Math.hypot((p[0] - c[0]) * fw, (p[1] - c[1]) * fh)), pts = [];
+  for (let i = 0; i < 96; i++) { const a = i / 96 * Math.PI * 2; pts.push([+(c[0] + r / fw * Math.cos(a)).toFixed(5), +(c[1] + r / fh * Math.sin(a)).toFixed(5)]) }
+  Object.assign(S.settings, { vizShape: 'path', vizClosed: true, vizPath: pts, vizDock: '' });
+}
+function finishLine() {
+  const [fw, fh] = frameSize(); MK.line = MK.line.filter((q, i, l) => !i || Math.hypot((q[0] - l[i - 1][0]) * fw, (q[1] - l[i - 1][1]) * fh) > 6);
+  if (MK.line.length < 2) { toast('Für eine Linie mindestens zwei Punkte setzen'); return }
+  Object.assign(S.settings, { vizShape: 'path', vizClosed: false, vizPath: MK.line.map(q => [+q[0].toFixed(5), +q[1].toFixed(5)]), vizDock: '' });
+  MK.line = []; changed('viz');
+}
+async function refineLine() {
+  busy('KI legt die Linie an die Kante …');
+  try { const d = await api('/api/mark/refine', { image: S.image.token, settings: S.settings, points: S.settings.vizPath, closed: false }); S.settings.vizPath = d.points; changed('viz'); toast('✓ Linie verfeinert') }
+  catch (e) { toast(e.message, true) } finally { busy('') }
+}
+async function ringFromAi(p) {
+  busy('KI erkennt das Motiv …');
+  try {
+    const d = await api('/api/mark/segment', { image: S.image.token, settings: S.settings, points: [[p[0], p[1], 1]] });
+    if (!d.bbox) throw new Error('Kein Motiv erkannt – anders klicken');
+    const [x, y, w, h] = d.bbox, [fw, fh] = frameSize(), c = [(x + w / 2) / 100, (y + h / 2) / 100];
+    const r = Math.max(w / 100 * fw, h / 100 * fh) / 2 * 1.08;
+    setRing(c, [c[0] + r / fw, c[1]]); MK.ringAi = false; changed('viz');
+    toast(d.method === 'ki' ? '✓ Ring um das Motiv gelegt' : '✓ Ring gelegt (einfache Erkennung)');
+  } catch (e) { toast(e.message, true) } finally { busy('') }
+}
+function pathPx(pts, fw, fh) { return pts.map(q => [q[0] * fw, q[1] * fh]) }
+function resamplePx(p, n, closed) {
+  const q = closed ? p.concat([p[0]]) : p, seg = [], cum = [0];
+  for (let i = 1; i < q.length; i++) { const l = Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]); seg.push(l); cum.push(cum[i - 1] + l) }
+  const L = cum[cum.length - 1] || 1, out = [];
+  for (let k = 0; k < n; k++) {
+    const t = closed ? k / n * L : k / (n - 1) * L; let i = 1; while (i < cum.length - 1 && cum[i] < t) i++;
+    const f = seg[i - 1] ? (t - cum[i - 1]) / seg[i - 1] : 0; out.push([q[i - 1][0] + (q[i][0] - q[i - 1][0]) * f, q[i - 1][1] + (q[i][1] - q[i - 1][1]) * f]);
+  }
+  return out;
+}
+function drawMarkSvg() {
+  const svg = $('#markSvg'), s = S.settings; if (!s) return;
+  const [fw, fh] = frameSize(); svg.setAttribute('viewBox', `0 0 ${fw} ${fh}`);
+  if (!s.viz || (MK.mode !== 'line' && MK.mode !== 'ring' && s.vizShape !== 'path')) { svg.innerHTML = ''; return }
+  let html = '';
+  const editPts = MK.line.length ? MK.line : (s.vizShape === 'path' ? s.vizPath : []);
+  if (editPts.length) {
+    const px = pathPx(editPts, fw, fh), closed = !MK.line.length && s.vizClosed;
+    if (s.vizShape === 'path' && !MK.line.length) html += pathSketch(px, closed, fw, fh);
+    html += `<polyline points="${px.concat(closed ? [px[0]] : []).map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ')}" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="6 5" opacity=".8"/>`;
+    if (MK.mode === 'line' || (MK.mode === 'ring' && false)) px.forEach((q, i) => { html += `<circle class="pt" data-i="${i}" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="6"/>` });
+  }
+  svg.innerHTML = html;
+}
+function pathSketch(px, closed, fw, fh) {
+  const s = S.settings, n = Math.max(16, Math.round(s.vizDens * (closed ? 1.4 : 1))), pts = resamplePx(px, n, closed), sp = spec(n, VT, s);
+  let area = 0; if (closed) for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; area += a[0] * b[1] - b[0] * a[1] }
+  const T = s.vizThick / 100 * fh, glow = s.vizGlow, out = [];
+  const sign = closed ? (area > 0 ? 1 : -1) : ((pts[pts.length - 1][0] - pts[0][0]) >= 0 ? -1 : 1);
+  const step = closed ? 2 * Math.PI : 0, len = (closed ? pts.length : pts.length - 1) || 1, wdt = Math.max(1.5, (px.length > 1 ? 1 : 1) * 0.6 * ((closed ? 2 : 1) * Math.PI * 0 + 1) * (Math.hypot(fw, fh) / n) * 0.35);
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[(i - 1 + pts.length) % pts.length], b = pts[(i + 1) % pts.length];
+    const A = closed || i > 0 ? a : pts[i], B = closed || i < pts.length - 1 ? b : pts[i];
+    let nx = -(B[1] - A[1]), ny = B[0] - A[0]; const l = Math.hypot(nx, ny) || 1; nx = nx / l * sign; ny = ny / l * sign;
+    const h = sp[i] * T, p = pts[i], c = colorAt(s, i / Math.max(1, pts.length - 1), VT);
+    const x0 = s.vizBoth ? p[0] - nx * h : p[0], y0 = s.vizBoth ? p[1] - ny * h : p[1];
+    out.push(`<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${(p[0] + nx * h).toFixed(1)}" y2="${(p[1] + ny * h).toFixed(1)}" stroke="${c}" stroke-width="${wdt.toFixed(1)}" stroke-linecap="round"/>`);
+  }
+  const f = glow > 0 ? ` style="filter:drop-shadow(0 0 ${Math.round(glow / 9)}px ${colorAt(s, .5, VT)})"` : '';
+  return `<g opacity="${s.vizAlpha / 100}"${f}>${out.join('')}</g>`;
+}
+
+/* KI-Platzvorschlag */
+async function suggestPlaces() {
+  busy('KI sucht ruhige Stellen …');
+  try {
+    const d = await api('/api/mark/suggest', { image: S.image.token, settings: S.settings });
+    const sb = $('#sugBox'); sb.textContent = ''; sb.hidden = false;
+    d.suggestions.forEach((c, i) => sb.append(el('button', { type: 'button', class: 'sug', style: `left:${c.x}%;top:${c.y}%;width:${c.w}%;height:${c.h}%`, onclick: () => { sb.hidden = true; goDock(c.dock); toast('✓ ' + c.name) } },
+      el('span', {}, `${i + 1} · ${c.name} – ${c.why}`))));
+    clearTimeout(MK.sugTimer); MK.sugTimer = setTimeout(() => { sb.hidden = true }, 15000);
+    if (d.faces) toast(`${d.faces} Gesicht(er) erkannt – die Vorschläge meiden sie.`);
+  } catch (e) { toast(e.message, true) } finally { busy('') }
+}
 
 
 /* ---------- Änderungen ---------- */
@@ -934,13 +1205,29 @@ function nativeReady() {
   $('#winMax').onclick = async () => maxTitle(await w.toggle_max());
   $('#winClose').onclick = quit;
   $$('.dragzone').forEach(z => {
-    z.addEventListener('mousedown', e => { if (e.button === 0 && e.detail < 2) { e.preventDefault(); w.drag() } });
+    z.addEventListener('mousedown', e => { if (e.button === 0 && e.detail < 2 && !document.body.classList.contains('full')) { e.preventDefault(); w.drag() } });
     z.addEventListener('dblclick', async e => { e.preventDefault(); maxTitle(await w.toggle_max()) });
   });
   $$('.grips i').forEach(g => g.addEventListener('mousedown', e => { if (e.button === 0) { e.preventDefault(); w.resize(g.dataset.edge) } }));
   w.is_max().then(maxTitle).catch(() => {});
+  setTimeout(() => w.is_max().then(maxTitle).catch(() => {}), 1500);
 }
 addEventListener('pywebviewready', nativeReady); nativeReady();
+
+/* F11 = Vollbild (ganzer Bildschirm), Esc verlässt es */
+async function toggleFull() {
+  const w = window.pywebview && window.pywebview.api;
+  let on;
+  if (w && w.toggle_fullscreen && document.body.classList.contains('native')) on = await w.toggle_fullscreen();
+  else { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen().catch(() => {}); on = !!document.fullscreenElement }
+  document.body.classList.toggle('full', !!on);
+  if (on) toast('Vollbild – mit F11 oder Esc zurück');
+}
+addEventListener('keydown', e => {
+  if (e.key === 'F11') { e.preventDefault(); toggleFull() }
+  else if (e.key === 'Escape' && document.body.classList.contains('full') && !document.querySelector('dialog[open]')) toggleFull();
+});
+addEventListener('fullscreenchange', () => { if (!document.body.classList.contains('native')) document.body.classList.toggle('full', !!document.fullscreenElement) });
 
 /* ---------- Beenden mit „Auf Wiedersehen“ (wie die Butchies-Webseite) ---------- */
 let leaving = false;
@@ -995,6 +1282,8 @@ applyTheme(S.theme);
     fillTransitions(info.transitions || []);
     S.settings = info.settings; S.outdir = info.outdir; showDir();
     S.presets = info.presets || []; renderPresets();
+    MK.mode = modeFromSettings(); if (S.settings.vizShape === 'mask') loadMaskFromServer(S.settings.vizMask);
+    $('#aiText').textContent = info.ai ? (info.ai.model ? '✨ ' : '') + info.ai.text : '';
     $('#verText').textContent = info.version;
     $('#ffDot').className = 'dot ' + (info.ffmpeg ? 'ok' : 'bad');
     $('#ffText').textContent = info.ffmpeg ? 'FFmpeg bereit' : 'FFmpeg fehlt';

@@ -37,7 +37,7 @@
  </nav>
  <div class="winctl" aria-label="Fenster">
   <button type="button" id="winMin" aria-label="Minimieren"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
-  <button type="button" id="winMax" aria-label="Maximieren"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1.5"/></svg></button>
+  <button type="button" id="winMax" aria-label="Maximieren" title="Maximieren · F11 = Vollbild"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1.5"/></svg></button>
   <button type="button" id="winClose" class="x" aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
  </div>
 </header>
@@ -82,10 +82,19 @@
     <h2>Vorschau</h2>
     <div class="chips"><span class="chip" id="resChip">3840 × 2160</span><span class="chip" id="fpsChip">30 fps</span><span class="chip acc" id="kindChip">Video · 16:9</span></div>
    </div>
+   <div class="markbar" id="markBar" hidden>
+    <div class="seg mk-modes" id="mkModes" role="group" aria-label="Wo soll der Visualizer entstehen?">
+     <button type="button" data-m="box">Kasten</button><button type="button" data-m="mask">Fläche</button><button type="button" data-m="line">Linie</button><button type="button" data-m="ring">Ring</button>
+    </div>
+    <div class="mk-tools" id="mkTools"></div>
+   </div>
    <div class="stage" id="stage">
     <div class="frame" id="frame">
      <img id="stillImg" alt="Vorschau des fertigen Videobilds" hidden>
      <div class="frame-empty" id="frameEmpty"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 8"/></svg><span>Bild hierher ziehen</span></div>
+     <canvas id="markCanvas" class="markcanvas" hidden aria-label="Fläche für den Visualizer malen"></canvas>
+     <svg id="markSvg" class="marksvg" aria-hidden="true"></svg>
+     <div class="sugbox" id="sugBox" hidden></div>
      <div class="dock-ghost" id="dockGhost" hidden aria-hidden="true"></div>
      <div class="dock-marks" id="dockMarks" hidden aria-hidden="true"></div>
      <div class="vizbox" id="vizBox" hidden>
@@ -106,6 +115,7 @@
     <span class="t" id="tDur">0:00</span>
    </div>
    <audio id="audio" preload="metadata"></audio>
+   <p class="hint mk-hint" id="mkHint" hidden></p>
    <p class="hint" id="vizHint" hidden>Visualizer im Bild <b>ziehen</b> = verschieben · <b>Ecken</b> = Größe · rastet an 9 Plätzen und 3 Bändern ein · <b id="dockStatus"></b></p>
   </div>
 
@@ -218,6 +228,7 @@
 <footer class="bottom">
  <span class="st"><i class="dot" id="ffDot"></i><span id="ffText">FFmpeg wird gesucht …</span></span>
  <span class="st" id="hwText"></span>
+ <span class="st" id="aiText"></span>
  <span class="st grow"></span>
  <span class="st">Version <b id="verText">–</b></span>
 </footer>
