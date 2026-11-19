@@ -143,10 +143,8 @@ if ($hr.state -ne 'fertig' -or $hr.result.suggestions.Count -lt 1) { throw 'Stel
 $ls = Invoke-RestMethod "$base/api/lyrics/status" -Headers $h
 "Songtext: Bibliothek $($ls.lib) $($ls.error)" | Tee-Object -FilePath $Out -Append
 if (-not $ls.lib) { throw 'Songtext-Erkennung (faster-whisper) fehlt im Programm' }
-Invoke-RestMethod -Method Post -Uri "$base/api/lyrics/download" -Headers $h -ContentType 'application/json' -Body '{}' | Out-Null
-for ($i = 0; $i -lt 300; $i++) { Start-Sleep -Seconds 1; $ls = Invoke-RestMethod "$base/api/lyrics/status" -Headers $h; if ($ls.download.state -ne 'running') { break } }
-"Songtext-Modell: $($ls.download.state) $($ls.download.error) (Modell da: $($ls.model))" | Tee-Object -FilePath $Out -Append
-if (-not $ls.model) { throw 'Songtext-Modell konnte nicht geladen werden' }
+"Songtext-Modell im Programm enthalten: $($ls.model)" | Tee-Object -FilePath $Out -Append
+if (-not $ls.model) { throw 'Songtext-Modell fehlt im Installer' }
 $tts = $false
 try {
   Add-Type -AssemblyName System.Speech

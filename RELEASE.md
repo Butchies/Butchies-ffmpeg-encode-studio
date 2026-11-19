@@ -1,4 +1,4 @@
-**ffmpeg_encode Studio 1.6.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
+**ffmpeg_encode Studio 1.6.1** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
 
 **Installieren:** `ffmpeg_encode_Studio-Setup.exe` herunterladen und starten. Es werden keine Administratorrechte gebraucht.
 FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingerichtet.
@@ -10,9 +10,12 @@ FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingeric
 - Grafikkarte automatisch (NVIDIA NVENC, Intel Quick Sync, AMD AMF), sonst CPU – mit automatischem Rückfall
 - Fortschritt in Prozent, Warteschlange, 7 Designs und Start-/Abschieds-Animation der Butchies-Webseite
 
+**Neu in 1.6.1**
+- Das Songtext-Modell (Whisper light, ca. 145 MB) ist jetzt **direkt im Installer** – nichts wird mehr nachgeladen, „Mit Songtext“ funktioniert sofort und komplett offline
+
 **Neu in 1.6.0**
 - **Shorts-Helfer** (bei „YouTube Shorts“ / „Shorts 4K“): Länge wählen (15 s – 3:00) und **✨ Beste Stelle finden** – die KI analysiert deinen Song offline (Takt, Energie, Drop, Wiederholung) und schlägt 3 Stellen vor: Refrain, Höhepunkt/Drop, Emotionaler Aufbau – mit ▶ Anhören und „Übernehmen“ (setzt Start/Ende, Schnitt auf dem Takt, kurz ein-/ausgeblendet)
-- **Mit Songtext** (Whisper light, offline): erkennt die gesungenen Zeilen und findet Refrain (wiederholte Zeilen) und gefühlvolle Stellen genauer; das kleine Modell (ca. 145 MB) wird beim ersten Mal heruntergeladen
+- **Mit Songtext** (Whisper light, offline): erkennt die gesungenen Zeilen und findet Refrain (wiederholte Zeilen) und gefühlvolle Stellen genauer
 - **Vollbild für 2 Monitore**: Knopf oben rechts oder F11 – füllt den ganzen Monitor, bleibt aber ein normales Fenster: Fenster und Dateien vom anderen Monitor kannst du weiter hin- und herziehen; Knopf „Anderer Monitor“ (oder Win + Umschalt + Pfeil) schiebt das Vollbild auf den anderen Bildschirm
 - Start- und Abschiedsbildschirm: **Butchies Encode Studio AI** – „AI“ in den Farben des Designs mit Lichtschimmer
 - KI-Video: statt der großen Karte nur noch eine kleine Kachel „🎬 KI-Video · bald“ bei den Bild-Effekten

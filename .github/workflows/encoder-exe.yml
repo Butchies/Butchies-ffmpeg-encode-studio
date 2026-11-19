@@ -47,12 +47,19 @@ jobs:
             Invoke-WebRequest -UseBasicParsing "https://huggingface.co/Acly/MobileSAM/resolve/main/$f" -OutFile "dist\ffmpeg_encode_Studio\models\$f"
             "$f : $((Get-Item dist\ffmpeg_encode_Studio\models\$f).Length) Bytes" | Tee-Object -FilePath model.log -Append
           }
+          # Songtext-Modell (Whisper „base“ für faster-whisper, MIT) – direkt im Installer, kein Nachladen nötig
+          New-Item -ItemType Directory -Force dist\ffmpeg_encode_Studio\models\whisper-base | Out-Null
+          foreach ($f in 'config.json', 'tokenizer.json', 'vocabulary.txt', 'model.bin') {
+            Invoke-WebRequest -UseBasicParsing "https://huggingface.co/Systran/faster-whisper-base/resolve/main/$f" -OutFile "dist\ffmpeg_encode_Studio\models\whisper-base\$f"
+            "whisper-base/$f : $((Get-Item dist\ffmpeg_encode_Studio\models\whisper-base\$f).Length) Bytes" | Tee-Object -FilePath model.log -Append
+          }
           # Tiefen-KI für die 3D-Kamerafahrt (Depth Anything V2 Small, Apache-2.0)
           Invoke-WebRequest -UseBasicParsing "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx" -OutFile "dist\ffmpeg_encode_Studio\models\depth_anything_v2_small.onnx"
           "depth_anything_v2_small.onnx : $((Get-Item dist\ffmpeg_encode_Studio\models\depth_anything_v2_small.onnx).Length) Bytes" | Tee-Object -FilePath model.log -Append
           @(
             "MobileSAM (https://github.com/ChaoningZhang/MobileSAM), ONNX-Export: https://huggingface.co/Acly/MobileSAM - MIT-Lizenz",
-            "Depth Anything V2 Small (https://github.com/DepthAnything/Depth-Anything-V2), ONNX: https://huggingface.co/onnx-community/depth-anything-v2-small - Apache-2.0"
+            "Depth Anything V2 Small (https://github.com/DepthAnything/Depth-Anything-V2), ONNX: https://huggingface.co/onnx-community/depth-anything-v2-small - Apache-2.0",
+            "Whisper base (OpenAI, MIT) als CTranslate2-Modell: https://huggingface.co/Systran/faster-whisper-base - MIT"
           ) | Out-File -Encoding utf8 dist\ffmpeg_encode_Studio\models\LIZENZ.txt
 
       - name: FFmpeg mit allen Codecs holen (x264, x265, AAC, NVENC, Quick Sync, AMF)

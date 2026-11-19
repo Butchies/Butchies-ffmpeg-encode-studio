@@ -19,7 +19,7 @@ except Exception:  # noqa: BLE001
 
 APP_NAME = 'ffmpeg_encode Studio'
 APP_DIRNAME = 'ffmpeg_encode Studio'      # Ordnername für Einstellungen/Videos bleibt (deine Daten bleiben erhalten)
-VERSION = '1.6.0'
+VERSION = '1.6.1'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -39,7 +39,9 @@ MODEL_DIR = next((d for d in (APP_DIR / 'models', BASE / 'models', Path(__file__
 SAM = mark.Sam(MODEL_DIR) if mark and mark.cv2 is not None else None
 DEPTH = fx.Depth(MODEL_DIR) if fx.cv2 is not None else None
 GPU = []           # erkannte Grafikkarten [{name, vram, vendor}]
-LYRICS = lyrics.Lyrics(HOME / 'models' / ('whisper-' + lyrics.MODEL_NAME))
+# Songtext-Modell: liegt seit 1.6.1 direkt im Programm (Installer); sonst Ersatz-Ort im Einstellungsordner
+_WHISPER = 'whisper-' + lyrics.MODEL_NAME
+LYRICS = lyrics.Lyrics(MODEL_DIR / _WHISPER if (MODEL_DIR / _WHISPER / 'model.bin').is_file() else HOME / 'models' / _WHISPER)
 HL_JOBS = {}       # Stellensuche: id -> {state, percent, phase, result, error}
 HL_CACHE = {}      # (Song-Pfad, mtime) -> Analyse bzw. Songtext
 
