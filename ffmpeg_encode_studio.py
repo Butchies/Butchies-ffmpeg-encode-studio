@@ -19,7 +19,7 @@ except Exception:  # noqa: BLE001
 
 APP_NAME = 'ffmpeg_encode Studio'
 APP_DIRNAME = 'ffmpeg_encode Studio'      # Ordnername für Einstellungen/Videos bleibt (deine Daten bleiben erhalten)
-VERSION = '1.6.1'
+VERSION = '1.6.2'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -673,6 +673,11 @@ def run_job(j):
         if fx.active(s):
             j['log'].append('Effekte: %s%s' % (dict((e[0], e[1]) for e in fx.EFFECTS)[s['fx']],
                                                 '' if s['cam'] == 'none' else ' · Kamera: ' + dict((c[0], c[1]) for c in fx.CAMS)[s['cam']]))
+            if s['fx'] != 'none':
+                j['log'].append('  Übernommen: Menge %d %% · Tempo %d %% · Größe %d %% · Deckkraft %d %%%s' % (
+                    s['fxAmount'], s['fxSpeed'], s['fxSize'], s['fxAlpha'], ' · im Takt' if s['fxBeat'] else ''))
+            if s['cam'] != 'none':
+                j['log'].append('  Kamera: Stärke %d %% · Tempo %d %%' % (s['camAmount'], s['camSpeed']))
         cmd = make_sound_cmds(j['audio']['path'], s, j['audio']['info'].get('duration'), 'snd-%s.txt' % j['id'])
         ok, tail = encode_pass(j, still, part, s, cmd)
         if not ok and not j['cancel'] and s['enc'] in GPU_ORDER:
