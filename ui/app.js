@@ -1178,11 +1178,29 @@ function renderSoon() {
 }
 
 
+/* ---------- Vorlagen-Menü in der Kopfzeile ---------- */
+function tplMenu(open) {
+  const m = $('#tplMenu'), o = open === undefined ? m.hidden : open;
+  m.hidden = !o; $('#tplBtn').setAttribute('aria-expanded', String(o));
+  if (o) renderPresets();
+}
+$('#tplBtn').onclick = e => { e.stopPropagation(); tplMenu() };
+document.addEventListener('click', e => { if (!$('#tplMenu').hidden && !e.target.closest('.tpl-wrap')) tplMenu(false) });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#tplMenu').hidden) { tplMenu(false); $('#tplBtn').focus() } });
+$('#tplMenu').addEventListener('click', e => { if (e.target.closest('button')) setTimeout(() => tplMenu(false), 0) });
+
 /* ---------- Einklappbare Fenster (beim Start alle zu) ---------- */
 const FOLD_SUM = {
   fmt: s => fmtOf(s.fmt)[1],
   fit: s => (FITS.find(f => f[0] === s.fit) || FITS[0])[1],
   viz: s => !s.viz ? 'Aus' : s.vizAi ? '✨ KI-Welle · ' + (AI_WAVES.find(w => w[0] === s.vizAiWave) || AI_WAVES[0])[1] : (VSTYLES.find(x => x[0] === s.vizStyle) || VSTYLES[0])[2],
+  fx: s => '',
+  time: s => {
+    if (!S.audio) return 'Noch kein Song';
+    const n = ((S.meta && S.meta.notes) || []).length;
+    return `${s.start || '0:00'} – ${s.end || 'Song-Ende'} · Länge ${$('#durOut').textContent}` + (n ? ' · ⚠ Hinweis' : '');
+  },
+  enc: s => encLabel(s.enc) + ' · ' + (($('#quality').selectedOptions[0] || {}).textContent || '').split(' ')[0],
   fade: s => {
     const opt = id => { const o = $(`#${id}`).selectedOptions[0]; return o ? o.textContent : '' };
     return (s.fadeIn || s.fadeOut) ? `${secDe(s.fadeIn)} / ${secDe(s.fadeOut)} · ${opt('transIn')}` : 'Aus';
@@ -1256,6 +1274,7 @@ function renderNotes() {
   if (Number.isNaN(st) || Number.isNaN(en)) notes.unshift('Bitte die Zeit so eingeben: 1:23 (Minuten:Sekunden) oder 83 (Sekunden).');
   for (const n of notes) box.append(el('div', { class: 'note' }, el('span', { html: ICON.warn }), el('span', {}, n)));
   $('#durOut').textContent = S.audio && S.meta ? mmss(S.meta.duration) : '0:00';
+  foldSummaries();
 }
 $('#tStart').addEventListener('input', debounce(e => { S.settings.start = e.target.value.trim() || '0:00'; changed('time') }, 350));
 $('#tEnd').addEventListener('input', debounce(e => { S.settings.end = e.target.value.trim(); changed('time') }, 350));

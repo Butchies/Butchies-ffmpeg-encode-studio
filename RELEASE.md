@@ -1,4 +1,4 @@
-**ffmpeg_encode Studio 1.4.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
+**ffmpeg_encode Studio 1.5.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
 
 **Installieren:** `ffmpeg_encode_Studio-Setup.exe` herunterladen und starten. Es werden keine Administratorrechte gebraucht.
 FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingerichtet.
@@ -9,6 +9,10 @@ FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingeric
 - Audio-Visualizer (Wellenform/Spektrum) in Design- oder eigener Farbe
 - Grafikkarte automatisch (NVIDIA NVENC, Intel Quick Sync, AMD AMF), sonst CPU – mit automatischem Rückfall
 - Fortschritt in Prozent, Warteschlange, 7 Designs und Start-/Abschieds-Animation der Butchies-Webseite
+
+**Neu in 1.5.0**
+- Auch **Encoding & Ausgabe**, **Zeitleiste & Länge** und **Bild-Effekte & Kamera** sind einklappbar und beim Start zu (zugeklappt mit Zusammenfassung, bei der Zeitleiste mit „⚠ Hinweis“, falls es einen gibt)
+- Die Leiste „Meine Vorlagen“ ist weg – stattdessen Knopf **„Vorlagen“** oben in der Kopfzeile (Speichern, Laden, letzte Vorlagen); dadurch mehr Platz für die Vorschau
 
 **Neu in 1.4.0**
 - Fenster **Zielformat, Bild-Anpassung, Audio-Visualizer, Fade-Effekte** und das Menü **Markieren** sind einklappbar und beim Start zu – zugeklappt steht rechts die aktuelle Wahl

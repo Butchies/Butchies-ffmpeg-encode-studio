@@ -24,7 +24,7 @@ Audio-Visualizer (ab 1.1.0)
 
 Visualizer-Platz markieren (ab 1.2.0, ab 1.4.0 mit Menü „Von Hand“ und „✨ KI“)
 -------------------------------------
-Ab 1.4.0: Die Fenster links/rechts und „Markieren“ sind beim Start zugeklappt – Überschrift anklicken
+Ab 1.4.0/1.5.0: Alle Einstellungs-Fenster und „Markieren“ sind beim Start zugeklappt – Überschrift anklicken
 zum Öffnen. Im Menü „Markieren“ gibt es „✋ Von Hand“ und „✨ KI“. Was die KI markiert, wird als
 Welle gezeigt (5 Formen: Neon, Welle, Linie, Punkte, Bündel).
 Über der Vorschau: Kasten · Fläche · Linie · Ring. Die Markierung ist im fertigen Video
@@ -52,6 +52,7 @@ Das Programm startet bildschirmfüllend. F11 = Vollbild ohne Taskleiste, F11 ode
 
 Vorlagen & Projekte
 -------------------
+(Ab 1.5.0 über den Knopf „Vorlagen“ oben in der Kopfzeile.)
 - „Speichern …“: als Vorlage (nur Einstellungen) oder als Projekt (.fesproj mit Song und Bild).
 - „Laden …“ oder einfach eine .fesproj-Datei ins Fenster ziehen.
 - Projekte liegen im Ordner „Projekte“ bei deinen Videos.

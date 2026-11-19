@@ -16,7 +16,7 @@ except Exception:  # noqa: BLE001
     mark = None
 
 APP_NAME = 'ffmpeg_encode Studio'
-VERSION = '1.4.0'
+VERSION = '1.5.0'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
