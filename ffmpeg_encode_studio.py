@@ -16,7 +16,7 @@ except Exception:  # noqa: BLE001
     mark = None
 
 APP_NAME = 'ffmpeg_encode Studio'
-VERSION = '1.3.0'
+VERSION = '1.4.0'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -370,6 +370,9 @@ def prepare_mark(s, W, H, dur, workdir=None, tag='x'):
         mark.mask_crop(src, W, H, ox, oy, vw, vh, out, s['vizFeather'])
         return [str(out)], {'mask': '[2:v]'}
     thick = max(4, int(H * s['vizThick'] / 100))
+    both = s['vizBoth']
+    if s['vizStyle'] in viz.WAVE_FAMILY:          # Wellen schwingen mittig um die Linie (sonst erscheinen sie doppelt)
+        both, thick = 'center', thick * 2
     if workdir is None or not mark:
         xs = [q[0] for q in s['vizPath']]
         ys = [q[1] for q in s['vizPath']]
@@ -377,13 +380,13 @@ def prepare_mark(s, W, H, dur, workdir=None, tag='x'):
         return ['karte-x.pgm', 'karte-y.pgm'], {'path': {'xm': '[2:v]', 'ym': '[3:v]', 'L': 1000, 'T': thick, 'ox': max(0, int(W * min(xs)) - thick),
                                                        'oy': max(0, int(H * min(ys)) - thick), 'bw': bw, 'bh': bh, 'closed': s['vizClosed']}}
     xp, yp = Path(workdir) / ('xmap-%s.pgm' % tag), Path(workdir) / ('ymap-%s.pgm' % tag)
-    ox, oy, bw, bh, L, T = mark.path_maps(s['vizPath'], s['vizClosed'], s['vizBoth'], W, H, thick, xp, yp)
+    ox, oy, bw, bh, L, T = mark.path_maps(s['vizPath'], s['vizClosed'], both, W, H, thick, xp, yp)
     return [str(xp), str(yp)], {'path': {'xm': '[2:v]', 'ym': '[3:v]', 'L': L, 'T': T, 'ox': ox, 'oy': oy, 'bw': bw, 'bh': bh, 'closed': s['vizClosed']}}
 
 
 def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fast=False, cmdfile=None, mark_dir=None, tag='x'):
     fx_notes = []
-    s = dict(s, enc='x264' if fast else resolve_enc(s['enc']))
+    s = dict(viz.effective(s), enc='x264' if fast else resolve_enc(s['enc']))
     name, w, h, vertical = FORMATS[s['fmt']]
     w, h = int(w * scale) // 2 * 2, int(h * scale) // 2 * 2
     fps = s['fps']
@@ -1045,6 +1048,7 @@ class Handler(BaseHTTPRequestHandler):
                 'transitions': [{'group': g, 'id': i, 'name': n} for g, i, n in TRANSITIONS],
                 'vizStyles': [{'id': i, 'name': n, 'short': k} for i, n, k in viz.STYLES],
                 'presets': conf.get('presets') or [], 'ai': ai_info(), 'gpu': gpu_view(),
+                'ai_waves': [{'id': i, 'name': n} for i, n in viz.AI_WAVES],
                 'fx': {'effects': [{'id': i, 'name': n, 'short': k, 'desc': d} for i, n, k, d in fx.EFFECTS],
                        'cams': [{'id': i, 'name': n, 'desc': d} for i, n, d in fx.CAMS],
                        'tools': fx.cv2 is not None, 'depth': bool(DEPTH and DEPTH.available())},

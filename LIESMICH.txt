@@ -22,8 +22,11 @@ Audio-Visualizer (ab 1.1.0)
   und 3 Bändern ein (abschaltbar in der Werkstatt).
 - „Vorschau mit Ton“ rendert 6 Sekunden genau so, wie es im Video aussieht.
 
-Visualizer-Platz markieren (ab 1.2.0)
+Visualizer-Platz markieren (ab 1.2.0, ab 1.4.0 mit Menü „Von Hand“ und „✨ KI“)
 -------------------------------------
+Ab 1.4.0: Die Fenster links/rechts und „Markieren“ sind beim Start zugeklappt – Überschrift anklicken
+zum Öffnen. Im Menü „Markieren“ gibt es „✋ Von Hand“ und „✨ KI“. Was die KI markiert, wird als
+Welle gezeigt (5 Formen: Neon, Welle, Linie, Punkte, Bündel).
 Über der Vorschau: Kasten · Fläche · Linie · Ring. Die Markierung ist im fertigen Video
 unsichtbar und gilt nur für dieses Video (im Projekt wird sie mitgespeichert, in Vorlagen nicht).
 - Fläche: mit Pinsel/Radierer/Rechteck/Ellipse malen – der Visualizer erscheint nur dort.

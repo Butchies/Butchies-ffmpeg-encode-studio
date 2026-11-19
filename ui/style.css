@@ -544,3 +544,30 @@ html,body{height:100%}
 .soon-gpu[data-lvl=nein] .dot{background:#ff5a5a}
 .mk-target button{white-space:nowrap}
 @media(max-width:1500px){.fx-tiles{grid-template-columns:repeat(5,minmax(0,1fr))}}
+
+/* ---------- 1.4.0: Einklappbare Fenster, Markieren Hand/KI ---------- */
+.fold-head{cursor:pointer;user-select:none;display:flex;align-items:center;gap:10px}
+.card>.fold-head{margin-bottom:12px}
+.card.folded>.fold-head{margin-bottom:0}
+.card.folded>:not(.fold-head){display:none!important}
+.fold-head .fold-sum{margin-left:auto;font:600 12px var(--fb,inherit);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:60%;text-align:right;letter-spacing:0;text-transform:none}
+.row-between.fold-head .fold-sum{max-width:45%}
+.fold-head .chev{flex:none;width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg) translate(-2px,-2px);transition:transform .2s}
+.folded>.fold-head .chev,.markbar.folded .chev{transform:rotate(-45deg)}
+.fold-head:hover .chev{border-color:var(--a)}
+.fold-head:focus-visible{outline:2px solid var(--a);outline-offset:4px;border-radius:6px}
+.card:not(.folded)>.fold-head .fold-sum{opacity:0}
+.markbar{display:block}
+.mk-head{min-height:34px;padding:2px 2px 6px}
+.mk-head b{font-size:13px}
+.markbar.folded .mk-body{display:none}
+.markbar:not(.folded) .mk-head .fold-sum{opacity:.7}
+.mk-body{display:flex;flex-direction:column;gap:8px}
+.mk-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.mk-tabs button,.mk-ai .seg button{white-space:nowrap}
+.mk-ai .seg.waves button{padding-inline:10px}
+.mk-lbl{font-size:12px;font-weight:700;color:var(--muted);margin-left:4px}
+.ai-note{margin:10px 0 0;padding:8px 12px;border-radius:9px;font-size:12.5px;line-height:1.45;background:color-mix(in srgb,var(--a) 12%,transparent);border:1px solid color-mix(in srgb,var(--a) 40%,transparent)}
+h2.fold-head,.fold-head h2{white-space:nowrap;flex:none}
+.fold-head .fold-sum{flex:1 1 auto;max-width:none}
+.row-between.fold-head .fold-sum{max-width:none}

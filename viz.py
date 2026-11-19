@@ -22,6 +22,9 @@ STYLES = [
 ]
 STYLE_IDS = [s[0] for s in STYLES]
 MODES = ('solid', 'gradient', 'rainbow', 'random', 'sound')
+WAVE_FAMILY = {'wave', 'line', 'neon', 'dots', 'strokes', 'bundle'}
+# Was die KI markiert, wird immer als Welle dargestellt – 5 Formen zur Auswahl
+AI_WAVES = [('neon', 'Neon'), ('wave', 'Welle'), ('line', 'Linie'), ('dots', 'Punkte'), ('bundle', 'Bündel')]
 BAR_FAMILY = {'bars', 'thin', 'glowbars', 'mirror', 'centerbars', 'reflect', 'cqt'}
 RAINBOW = ['#ff3b3b', '#ff9f1c', '#ffe14d', '#3ddc84', '#2ec5ff', '#5b6cff', '#c04dff']
 
@@ -32,8 +35,14 @@ DEFAULTS = {
     'vizCenter': False, 'vizFloor': False, 'vizSoft': True,
     # Markierung (gilt nur für dieses Video / Projekt, nicht für Vorlagen)
     'vizShape': 'box', 'vizMask': '', 'vizPath': [], 'vizClosed': False, 'vizBoth': True, 'vizThick': 14.0, 'vizFeather': 0.6,
+    'vizAi': False, 'vizAiWave': 'neon',
 }
-MARK_KEYS = ('vizShape', 'vizMask', 'vizPath', 'vizClosed', 'vizBoth', 'vizThick', 'vizFeather')
+MARK_KEYS = ('vizShape', 'vizMask', 'vizPath', 'vizClosed', 'vizBoth', 'vizThick', 'vizFeather', 'vizAi')
+
+
+def effective(s):
+    """KI-Markierung -> immer eine der 5 Wellenformen statt des gewählten Stils."""
+    return dict(s, vizStyle=s['vizAiWave']) if s.get('vizAi') else s
 LIMITS = {'vizX': (0, 95), 'vizY': (0, 98), 'vizW': (5, 100), 'vizH': (3, 100), 'vizStr': (20, 200), 'vizAlpha': (10, 100),
           'vizGlow': (0, 100), 'vizDens': (8, 128), 'vizSmooth': (0, 100), 'vizLine': (1, 10), 'vizSeed': (0, 999999),
           'vizThick': (2, 60), 'vizFeather': (0, 5)}
@@ -70,6 +79,8 @@ def clean(s, out):
         out['vizStyle'] = 'mirror' if out['vizStyle'] != 'wave' else 'wave'
     if out['vizMode'] not in MODES:
         out['vizMode'] = 'gradient'
+    if out['vizAiWave'] not in [w[0] for w in AI_WAVES]:
+        out['vizAiWave'] = 'neon'
     for k in ('vizColor', 'vizColor2'):
         if not HEX.fullmatch(str(out[k])):
             out[k] = DEFAULTS[k]

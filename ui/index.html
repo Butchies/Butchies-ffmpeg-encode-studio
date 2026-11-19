@@ -63,12 +63,12 @@
   </div>
   <div class="files" id="files"></div>
 
-  <div class="card">
+  <div data-fold="fmt" class="card">
    <h2><span class="n">1</span> Zielformat</h2>
    <div class="fmt-list" id="fmtList"></div>
   </div>
 
-  <div class="card">
+  <div data-fold="fit" class="card">
    <h2><span class="n">2</span> Bild-Anpassung</h2>
    <div class="opt-list" id="fitList"></div>
   </div>
@@ -82,14 +82,27 @@
     <h2>Vorschau</h2>
     <div class="chips"><span class="chip" id="resChip">3840 × 2160</span><span class="chip" id="fpsChip">30 fps</span><span class="chip acc" id="kindChip">Video · 16:9</span></div>
    </div>
-   <div class="markbar" id="markBar" hidden>
-    <div class="seg mk-target" id="mkTarget" role="group" aria-label="Was markieren?" hidden>
-     <button type="button" data-t="viz">🎵 Visualizer</button><button type="button" data-t="fx">✨ Effekt</button>
+   <div class="markbar folded" id="markBar" hidden>
+    <div class="mk-head fold-head" id="mkHead" role="button" tabindex="0" aria-expanded="false" aria-controls="mkBody">
+     <b>Markieren</b><span class="fold-sum" id="mkSum"></span><i class="chev" aria-hidden="true"></i>
     </div>
-    <div class="seg mk-modes" id="mkModes" role="group" aria-label="Wo soll der Visualizer entstehen?">
-     <button type="button" data-m="box">Kasten</button><button type="button" data-m="mask">Fläche</button><button type="button" data-m="line">Linie</button><button type="button" data-m="ring">Ring</button>
+    <div class="mk-body" id="mkBody">
+     <div class="mk-row">
+      <div class="seg mk-target" id="mkTarget" role="group" aria-label="Was markieren?" hidden>
+       <button type="button" data-t="viz">🎵 Visualizer</button><button type="button" data-t="fx">✨ Effekt</button>
+      </div>
+      <div class="seg mk-tabs" id="mkTabs" role="group" aria-label="Werkzeuge">
+       <button type="button" data-tab="hand">✋ Von Hand</button><button type="button" data-tab="ai">✨ KI</button>
+      </div>
+     </div>
+     <div class="mk-row" id="mkHandRow">
+      <div class="seg mk-modes" id="mkModes" role="group" aria-label="Wo soll der Visualizer entstehen?">
+       <button type="button" data-m="box">Kasten</button><button type="button" data-m="mask">Fläche</button><button type="button" data-m="line">Linie</button><button type="button" data-m="ring">Ring</button>
+      </div>
+      <div class="mk-tools" id="mkTools"></div>
+     </div>
+     <div class="mk-row mk-ai" id="mkAiRow" hidden></div>
     </div>
-    <div class="mk-tools" id="mkTools"></div>
    </div>
    <div class="stage" id="stage">
     <div class="frame" id="frame">
@@ -123,12 +136,13 @@
    <p class="hint" id="vizHint" hidden>Visualizer im Bild <b>ziehen</b> = verschieben · <b>Ecken</b> = Größe · rastet an 9 Plätzen und 3 Bändern ein · <b id="dockStatus"></b></p>
   </div>
 
-  <div class="card vizcard" id="vizCard">
+  <div data-fold="viz" class="card vizcard" id="vizCard">
    <div class="row-between">
     <h2><span class="n">3</span> Audio-Visualizer</h2>
     <button type="button" class="switch" id="vizSwitch" role="switch" aria-checked="false" aria-label="Audio-Visualizer einblenden"><i></i></button>
    </div>
    <div class="viz-tiles" id="vizTiles" role="group" aria-label="Stil"></div>
+   <p class="ai-note" id="vizAiNote" hidden></p>
    <div class="viz-cols">
     <div class="field"><span>Farbe</span>
      <div class="modes" id="vizModes" role="group" aria-label="Farbart"></div>
@@ -234,7 +248,7 @@
    <p class="hint">Standbild + Musik: 24–30 fps reichen. Mit Visualizer wirken 50/60 fps flüssiger.</p>
   </div>
 
-  <div class="card">
+  <div data-fold="fade" class="card">
    <h2><span class="n">5</span> Fade-Effekte</h2>
    <div class="presets" id="presets"></div>
    <label class="field range"><span>Fade-In <b id="fiVal">2,0 s</b></span><input type="range" id="fadeIn" min="0" max="10" step="0.5"></label>

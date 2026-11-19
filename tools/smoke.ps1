@@ -86,7 +86,8 @@ $ring = @(); for ($i = 0; $i -lt 48; $i++) { $t = $i / 48 * 2 * [math]::PI; $rin
 $marks = @(
   @{ name = 'Maske'; s = @{ vizShape = 'mask'; vizMask = $mk.token; vizX = $mk.bbox[0]; vizY = $mk.bbox[1]; vizW = $mk.bbox[2]; vizH = $mk.bbox[3]; vizStyle = 'mirror' } },
   @{ name = 'Ring'; s = @{ vizShape = 'path'; vizClosed = $true; vizPath = $ring; vizStyle = 'bars'; vizBoth = $false } },
-  @{ name = 'Linie'; s = @{ vizShape = 'path'; vizClosed = $false; vizPath = @(@(0.1, 0.7), @(0.5, 0.6), @(0.9, 0.7)); vizStyle = 'wave' } }
+  @{ name = 'Linie'; s = @{ vizShape = 'path'; vizClosed = $false; vizPath = @(@(0.1, 0.7), @(0.5, 0.6), @(0.9, 0.7)); vizStyle = 'wave' } },
+  @{ name = 'KI-Welle Ring'; s = @{ vizShape = 'path'; vizClosed = $true; vizPath = $ring; vizStyle = 'bars'; vizAi = $true; vizAiWave = 'neon' } }
 )
 foreach ($c in $marks) {
   $st = @{ fmt = 'yt1080'; fps = 25; viz = $true; fit = 'contain'; vizMode = 'rainbow' }

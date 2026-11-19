@@ -351,6 +351,9 @@ def mask_crop(mask_path, W, H, ox, oy, vw, vh, out_path, feather=0.0):
 # ---------- Pfad (Linie / Ring) -> remap-Karten ----------
 def path_maps(path_norm, closed, both, W, H, thick_px, out_x, out_y):
     """Berechnet die FFmpeg-remap-Karten, die einen geraden Streifen (Länge L × Dicke T) entlang des Pfads biegen.
+    both=True: unterste Streifenzeile = Linie, auf beide Seiten gespiegelt (Balken beidseitig)
+    both=False: unterste Zeile = Linie, nur eine Seite
+    both='center': Streifenmitte = Linie, obere Hälfte auf der einen, untere auf der anderen Seite (Wellen schwingen um die Linie)
     Rückgabe: (ox, oy, bw, bh, L, T)."""
     pts = np.array([[x * W, y * H] for x, y in path_norm], np.float64)
     if len(pts) < 2:
@@ -396,7 +399,11 @@ def path_maps(path_norm, closed, both, W, H, thick_px, out_x, out_y):
         upd = dist < sub
         sub[upd] = dist[upd]
         s_along = (cum[i] + t * slen[i]) / max(Ltot, 1e-6) * (L - 1)
-        if both:
+        if both == 'center':
+            ok = dist < T / 2
+            sd = np.where(side >= 0, dist, -dist)
+            ymap = np.clip((T - 1) / 2 - sd, 0, T - 1)
+        elif both:
             ok = dist < T
             ymap = (T - 1) - np.minimum(dist, T - 1)
         else:

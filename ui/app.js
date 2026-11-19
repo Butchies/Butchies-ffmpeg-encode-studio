@@ -200,6 +200,9 @@ const VSTYLES = [
   ['combo', 'Balken + Welle', 'Kombi'], ['spectro', 'Spektrogramm-Laufband', 'Laufband'], ['vu', 'VU-Meter (Pegel)', 'Pegel'], ['scope', 'Lissajous-Figur', 'Lissajous'],
   ['glowbars', 'Leucht-Balken', 'Leuchten']
 ];
+const AI_WAVES = [['neon', 'Neon'], ['wave', 'Welle'], ['line', 'Linie'], ['dots', 'Punkte'], ['bundle', 'Bündel']];
+const WAVE_FAMILY = ['wave', 'line', 'neon', 'dots', 'strokes', 'bundle'];
+const effStyle = s => s.vizAi ? s.vizAiWave : s.vizStyle;
 const VMODES = [['solid', 'Einfarbig'], ['gradient', 'Verlauf'], ['rainbow', 'Regenbogen'], ['random', 'Zufall'], ['sound', 'Nach Sound']];
 const VHINT = {
   solid: 'Eine feste Farbe für den ganzen Visualizer.',
@@ -350,8 +353,9 @@ function drawVizBox() {
   const s = S.settings, box = $('#vizBox'), r = box.getBoundingClientRect();
   const W = Math.max(20, Math.round(r.width)), H = Math.max(10, Math.round(r.height)), svg = $('#vizSvg');
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.innerHTML = vizSvg(s.vizStyle, W, H, VT, s, false, 'vgMain');
-  const glow = s.vizStyle === 'neon' || s.vizStyle === 'glowbars' ? Math.max(s.vizGlow, 65) : s.vizGlow;
+  const st = effStyle(s);
+  svg.innerHTML = vizSvg(st, W, H, VT, s, false, 'vgMain');
+  const glow = st === 'neon' || st === 'glowbars' ? Math.max(s.vizGlow, 65) : s.vizGlow;
   svg.style.opacity = s.vizAlpha / 100;
   svg.style.filter = glow > 0 ? `drop-shadow(0 0 ${Math.round(glow / 8)}px ${colorAt(s, 0.3, VT)}) drop-shadow(0 0 ${Math.round(glow / 4)}px ${colorAt(s, 0.7, VT)})` : 'none';
   let m = s.vizSoft ? 'linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%)' : 'none', ms = '', mp = '';
@@ -369,8 +373,8 @@ function placeVizBox() {
   box.classList.toggle('locked', s.vizShape === 'mask');
   box.style.left = s.vizX + '%'; box.style.top = s.vizY + '%'; box.style.width = s.vizW + '%'; box.style.height = s.vizH + '%';
   box.classList.toggle('low', s.vizY < 8);
-  const st = VSTYLES.find(x => x[0] === s.vizStyle) || VSTYLES[0];
-  $('#vbLabel').textContent = st[1] + (s.vizDock ? ' · ' + dockName(s.vizDock) : ' · frei');
+  const st = VSTYLES.find(x => x[0] === effStyle(s)) || VSTYLES[0];
+  $('#vbLabel').textContent = (s.vizAi ? '✨ KI-Welle: ' : '') + st[1] + (s.vizDock ? ' · ' + dockName(s.vizDock) : ' · frei');
   $('#dockStatus').textContent = s.vizDock ? 'Angedockt: ' + dockName(s.vizDock) : 'Frei platziert';
   if (s.viz && s.vizShape !== 'path') drawVizBox();
 }
@@ -384,10 +388,12 @@ function renderViz(force) {
   if (force || key !== tilesKey || !$('#vizTiles').childElementCount) {
     tilesKey = key; const box = $('#vizTiles'); box.textContent = '';
     const ms = Object.assign({}, s, { vizStr: 100, vizSmooth: 60, vizCenter: false, vizFloor: false });
-    VSTYLES.forEach(([id, name, short], i) => box.append(el('button', { type: 'button', class: 'vtile', 'data-id': id, title: name, 'aria-label': name, onclick: () => set('vizStyle', id) },
+    VSTYLES.forEach(([id, name, short], i) => box.append(el('button', { type: 'button', class: 'vtile', 'data-id': id, title: name, 'aria-label': name, onclick: () => { if (S.settings.vizAi) { S.settings.vizAi = false; toast('Stil von Hand gewählt – die KI-Welle ist aus') } set('vizStyle', id) } },
       el('div', { class: 'vt-art', 'aria-hidden': 'true', html: `<svg viewBox="0 0 96 44">${vizSvg(id, 96, 44, 1.4, ms, true, 'vgT' + i)}</svg>` }), el('span', {}, short))));
   }
-  $$('.vtile').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === s.vizStyle)));
+  $$('.vtile').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === s.vizStyle && !s.vizAi)));
+  $('#vizAiNote').hidden = !s.vizAi;
+  $('#vizAiNote').textContent = `✨ Die KI hat markiert – dargestellt als Welle „${(AI_WAVES.find(w => w[0] === s.vizAiWave) || AI_WAVES[0])[1]}“ (änderbar oben im Menü „Markieren → ✨ KI“). Ein Stil hier wählen = wieder von Hand.`;
   const mb = $('#vizModes'); mb.textContent = '';
   const hs = randHues(s.vizSeed).map(h => `hsl(${Math.round(h % 360)},88%,60%)`);
   const sw = { solid: s.vizColor, gradient: `linear-gradient(90deg,${s.vizColor},${s.vizColor2})`, rainbow: `linear-gradient(90deg,${RAINBOW.join(',')})`, random: `linear-gradient(90deg,${hs.join(',')})`, sound: 'linear-gradient(90deg,#ff7a45,#ffd34d,#3ddc84,#38bdf8)' };
@@ -432,8 +438,8 @@ function renderWorkshop() {
   $(sel).addEventListener('change', e => { const v = Math.min(hi, Math.max(lo, parseFloat(String(e.target.value).replace(',', '.')) || 0)); S.settings[k] = v; S.settings.vizDock = ''; fitBox(); changed('viz') });
 });
 function fitBox() { const s = S.settings; s.vizW = Math.min(s.vizW, 100 - s.vizX); s.vizH = Math.min(s.vizH, 100 - s.vizY); if (s.vizX + s.vizW > 100) s.vizX = 100 - s.vizW; if (s.vizY + s.vizH > 100) s.vizY = 100 - s.vizH }
-function goDock(id) {
-  const s = S.settings;
+function goDock(id, ai) {
+  const s = S.settings; s.vizAi = !!ai;
   if (id.startsWith('band')) { const p = dockPos(id, 100, s.vizH); Object.assign(s, { vizDock: id, vizX: 0, vizY: p.y, vizW: 100 }) }
   else { const w = s.vizW > 92 ? 80 : s.vizW, p = dockPos(id, w, s.vizH); Object.assign(s, { vizDock: id, vizX: p.x, vizY: p.y, vizW: w }) }
   changed('viz');
@@ -477,7 +483,7 @@ $('#vizBox').addEventListener('pointermove', e => {
   }
   placeVizBox(); showMarks(d.mode === 'move');
 });
-const endDrag = () => { if (!DRAG) return; DRAG = null; showMarks(false); changed('viz') };
+const endDrag = () => { if (!DRAG) return; DRAG = null; S.settings.vizAi = false; showMarks(false); changed('viz') };
 $('#vizBox').addEventListener('pointerup', endDrag);
 $('#vizBox').addEventListener('pointercancel', endDrag);
 function showMarks(on) {
@@ -610,7 +616,7 @@ $('#showProjDir').onclick = () => api('/api/show', { path: S.projDir || S.outdir
 
 
 /* ---------- Markieren: Fläche malen, Linie, Ring (+ KI) ---------- */
-const MK = { target: 'viz', mode: 'box', tool: 'brush', size: 36, aiPts: [], aiBase: null, ringAi: false, drawing: false, last: null, start: null, line: [], busy: '', drag: -1, sugTimer: 0 };
+const MK = { tab: 'hand', target: 'viz', mode: 'box', tool: 'brush', size: 36, aiPts: [], aiBase: null, ringAi: false, drawing: false, last: null, start: null, line: [], busy: '', drag: -1, sugTimer: 0 };
 const MASKC = { viz: document.createElement('canvas'), fx: document.createElement('canvas') };
 const MURL = { viz: '', fx: '' };
 const mc = () => MASKC[MK.target];
@@ -621,6 +627,7 @@ function shp(t = MK.target) { const s = S.settings; if (t === 'fx') return s.fxA
 function setShp(v) { if (MK.target === 'fx') S.settings.fxArea = v === 'box' ? 'full' : v; else { S.settings.vizShape = v; if (v !== 'box') S.settings.vizDock = '' } }
 const fxOn = () => S.settings.fx && S.settings.fx !== 'none';
 function markOn() { return MK.target === 'fx' ? fxOn() : S.settings.viz }
+function setAi(v) { if (MK.target === 'viz') S.settings.vizAi = !!v }
 const tName = () => MK.target === 'fx' ? 'der Effekt' : 'der Visualizer';
 const isTall = () => fmtOf(S.settings.fmt)[3];
 function maskSize() { return isTall() ? [540, 960] : [960, 540] }
@@ -635,7 +642,7 @@ function ensureMask() {
 }
 function modeFromSettings() { const sh = shp(); return sh === 'mask' ? 'mask' : sh === 'path' ? (M.Closed ? 'ring' : 'line') : 'box' }
 function frameSize() { const r = $('#frame').getBoundingClientRect(); return [r.width || 1, r.height || 1] }
-function busy(text) { MK.busy = text || ''; renderMarkTools() }
+function busy(text) { MK.busy = text || ''; renderMarkTools(); renderAiRow() }
 
 function renderMark() {
   if (!S.settings) return;
@@ -649,7 +656,12 @@ function renderMark() {
   $('#mkModes [data-m="box"]').textContent = MK.target === 'fx' ? 'Ganzes Bild' : 'Kasten';
   $('#mkModes').setAttribute('aria-label', MK.target === 'fx' ? 'Wo soll der Effekt wirken?' : 'Wo soll der Visualizer entstehen?');
   ensureMask();
+  if (MK.tab === 'hand' && MK.tool === 'ai') MK.tool = 'brush';
+  if (MK.tab === 'ai' && MK.mode === 'mask') MK.tool = 'ai';
+  $$('#mkTabs button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tab === MK.tab)));
+  $('#mkHandRow').hidden = MK.tab !== 'hand'; $('#mkAiRow').hidden = MK.tab !== 'ai';
   $$('#mkModes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === MK.mode)));
+  renderAiRow(); markSummary();
   const fr = $('#frame');
   fr.classList.toggle('mk-line', on && MK.mode === 'line'); fr.classList.toggle('mk-ring', on && MK.mode === 'ring');
   $('#markCanvas').hidden = !(on && MK.mode === 'mask');
@@ -658,13 +670,23 @@ function renderMark() {
 function markHint() {
   const s = S.settings, h = $('#mkHint');
   const t = {
-    box: 'Kasten: im Bild ziehen und an den Ecken skalieren. ✨ KI-Platzvorschlag findet ruhige Stellen.',
+    box: 'Kasten: im Bild ziehen und an den Ecken skalieren. Ruhige Stellen findet die KI unter „✨ KI → Platzvorschlag“.',
     mask: MK.tool === 'ai' ? '✨ KI-Auswahl: auf das Motiv klicken = dazunehmen · Umschalt- oder Rechtsklick = wegnehmen · mehrere Klicks verfeinern.'
       : `Fläche malen: ${tName().replace(/^d/, 'D')} erscheint nur in der markierten Fläche. Die Markierung ist im fertigen Video unsichtbar.`,
     line: MK.line.length ? 'Weiter klicken für neue Punkte · Doppelklick (oder „Fertig“) beendet die Linie.' : shp() === 'path' && !M.Closed ? 'Punkte ziehen zum Anpassen · ✨ KI verfeinern legt die Linie an die nächste Kante im Bild.'
       : MK.target === 'fx' ? 'Klicke Punkte entlang der Stelle, an der die Lichtlinien laufen sollen · Doppelklick beendet.' : 'Klicke Punkte entlang der Stelle, an der die Balken stehen sollen · Doppelklick beendet.',
     ring: MK.ringAi ? '✨ Klick jetzt auf das Motiv – die KI legt den Ring passend darum.' : 'In die Mitte klicken und den Radius aufziehen – oder ✨ „Motiv antippen“.'
   }[MK.mode];
+  if (MK.tab === 'ai') {
+    h.hidden = !markOn();
+    h.textContent = !(S.info && S.info.ai && S.info.ai.tools) ? 'Die KI-Werkzeuge sind auf diesem PC nicht verfügbar.'
+      : { mask: '✨ Klick aufs Motiv – die KI erkennt die Fläche. Weitere Klicks verfeinern, Umschalt- oder Rechtsklick nimmt weg.',
+        line: MK.line.length ? 'Weiter klicken · Doppelklick beendet – dann legt die KI die Linie an die nächste Kante.' : '✨ Klicke grob ein paar Punkte entlang einer Kante (z. B. Horizont) und beende mit Doppelklick – die KI legt die Linie genau an die Kante.',
+        ring: '✨ Klick aufs Motiv – die KI legt den Ring passend darum.',
+        box: '✨ Platzvorschlag: die KI zeigt ruhige Stellen im Bild – zum Übernehmen anklicken.' }[MK.mode] +
+        (MK.target === 'viz' ? ' Was die KI markiert, wird als Welle dargestellt.' : '');
+    return;
+  }
   const fxBox = MK.target === 'fx' && MK.mode === 'box';
   const none = (MK.mode === 'mask' && shp() !== 'mask') || ((MK.mode === 'line' || MK.mode === 'ring') && shp() !== 'path' && !MK.line.length);
   h.hidden = !markOn();
@@ -678,23 +700,19 @@ function renderMarkTools() {
   const slider = (label, k, min, max, step, fmt) => { const i = el('input', { type: 'range', min, max, step, value: k === 'size' ? MK.size : s[k], 'aria-label': label }); const b = el('b', {}, fmt(k === 'size' ? MK.size : s[k])); i.oninput = () => { if (k === 'size') MK.size = +i.value; else { s[k] = +i.value; drawMarkSvg(); saveSettings(); refreshCommand() } b.textContent = fmt(+i.value) }; return el('label', { class: 'mini' }, label, i, b) };
   if (MK.busy) box.append(el('span', { class: 'mk-busy' }, el('span', { class: 'spin' }), MK.busy));
   if (MK.mode === 'box') {
-    if (MK.target === 'viz') box.append(btn('✨ KI-Platzvorschlag', suggestPlaces, 'ai', { disabled: !S.image || !(ai && ai.tools) }));
+    /* Kasten: im Bild ziehen */
   } else if (MK.mode === 'mask') {
     const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Werkzeug' });
-    [['brush', 'Pinsel'], ['erase', 'Radierer'], ['rect', 'Rechteck'], ['ellipse', 'Ellipse'], ['ai', '✨ KI-Auswahl']].forEach(([id, n]) =>
-      seg.append(el('button', { type: 'button', 'aria-pressed': String(MK.tool === id), disabled: id === 'ai' && !(ai && ai.tools), onclick: () => { MK.tool = id; MK.aiPts = []; MK.aiBase = null; renderMarkTools(); markHint() } }, n)));
+    [['brush', 'Pinsel'], ['erase', 'Radierer'], ['rect', 'Rechteck'], ['ellipse', 'Ellipse']].forEach(([id, n]) =>
+      seg.append(el('button', { type: 'button', 'aria-pressed': String(MK.tool === id), onclick: () => { MK.tool = id; MK.aiPts = []; MK.aiBase = null; renderMarkTools(); markHint() } }, n)));
     box.append(seg);
     if (MK.tool === 'brush' || MK.tool === 'erase') box.append(slider('Größe', 'size', 6, 160, 2, v => v + ' px'));
-    if (MK.tool === 'ai' && MK.aiPts.length) box.append(btn('Neue KI-Auswahl', () => { MK.aiPts = []; MK.aiBase = null; renderMarkTools() }));
     box.append(slider('Weiche Kante', P('Feather'), 0, 5, 0.1, v => String(v).replace('.', ',') + ' %'));
     box.append(btn('Alles löschen', () => { mc().getContext('2d').clearRect(0, 0, mc().width, mc().height); MK.aiPts = []; MK.aiBase = null; renderMaskOverlay(); uploadMask() }));
   } else {
     if (MK.mode === 'line') {
       if (MK.line.length) box.append(btn('Fertig', finishLine, 'glow'));
-      box.append(btn('✨ KI verfeinern', refineLine, 'ai', { disabled: !(shp() === 'path' && !M.Closed) || !(ai && ai.tools) }));
       box.append(btn('Neu zeichnen', () => { MK.line = []; if (shp() === 'path') { setShp('box'); changed('viz') } else renderMark() }));
-    } else {
-      box.append(btn('✨ Motiv antippen', () => { MK.ringAi = !MK.ringAi; renderMarkTools(); markHint() }, 'ai', { 'aria-pressed': String(MK.ringAi), disabled: !S.image || !(ai && ai.tools) }));
     }
     if (MK.target === 'viz') {
       const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Richtung' });
@@ -712,6 +730,45 @@ function pickMode(m) {
   changed('viz');
 }
 $$('#mkModes button').forEach(b => b.onclick = () => pickMode(b.dataset.m));
+function pickTab(t) {
+  MK.tab = t; MK.line = []; MK.ringAi = false; MK.aiPts = []; MK.aiBase = null; $('#sugBox').hidden = true;
+  if (t === 'ai' && MK.mode === 'mask') MK.tool = 'ai';
+  if (t === 'hand' && MK.tool === 'ai') MK.tool = 'brush';
+  changed('viz');
+}
+$$('#mkTabs button').forEach(b => b.onclick = () => pickTab(b.dataset.tab));
+function aiAction(m) {
+  if (!S.image) { toast('Zuerst ein Bild hineinziehen'); return }
+  MK.tab = 'ai'; MK.mode = m; MK.line = []; MK.aiPts = []; MK.aiBase = null; MK.ringAi = m === 'ring'; $('#sugBox').hidden = true;
+  if (m === 'mask') MK.tool = 'ai';
+  changed('viz');
+  if (m === 'box') suggestPlaces();
+}
+function renderAiRow() {
+  const row = $('#mkAiRow'); if (MK.tab !== 'ai') return; row.textContent = '';
+  const ai = S.info && S.info.ai, ok = !!(ai && ai.tools) && !!S.image;
+  const acts = [['mask', '✨ Motiv auswählen', 'Fläche'], ['line', '✨ Linie an Kante', 'Linie'], ['ring', '✨ Ring ums Motiv', 'Ring']];
+  if (MK.target === 'viz') acts.push(['box', '✨ Platzvorschlag', 'Kasten']);
+  const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'KI-Werkzeug' });
+  acts.forEach(([m, n, t]) => seg.append(el('button', { type: 'button', title: t, disabled: !ok, 'aria-pressed': String(MK.mode === m), onclick: () => aiAction(m) }, n)));
+  row.append(seg);
+  if (MK.target === 'viz') {
+    const ws = el('div', { class: 'seg waves', role: 'group', 'aria-label': 'Wellenform der KI' });
+    AI_WAVES.forEach(([id, n]) => ws.append(el('button', { type: 'button', 'aria-pressed': String(S.settings.vizAiWave === id), onclick: () => set('vizAiWave', id) }, n)));
+    row.append(el('span', { class: 'mk-lbl' }, 'Welle:'), ws);
+  }
+  if (MK.mode === 'line' && MK.line.length) row.append(el('button', { type: 'button', class: 'btn small glow', onclick: finishLine }, 'Fertig'));
+  if (MK.mode === 'mask' && MK.aiPts.length) row.append(el('button', { type: 'button', class: 'btn small', onclick: () => { MK.aiPts = []; MK.aiBase = null; renderAiRow() } }, 'Neue Auswahl'));
+  if (MK.busy) row.append(el('span', { class: 'mk-busy' }, el('span', { class: 'spin' }), MK.busy));
+  if (!(ai && ai.tools)) row.append(el('small', { class: 'mhint' }, 'KI auf diesem PC nicht verfügbar.'));
+}
+function markSummary() {
+  const s = S.settings, part = [];
+  const name = (t) => { const sh = shp(t), cl = t === 'fx' ? s.fxClosed : s.vizClosed; return sh === 'mask' ? 'Fläche' : sh === 'path' ? (cl ? 'Ring' : 'Linie') : t === 'fx' ? 'ganzes Bild' : 'Kasten' };
+  if (s.viz) part.push('Visualizer: ' + name('viz') + (s.vizAi ? ' (✨ KI-Welle)' : ''));
+  if (fxOn()) part.push('Effekt: ' + name('fx'));
+  $('#mkSum').textContent = part.join(' · ');
+}
 function pickTarget(t) { MK.target = t; MK.line = []; MK.ringAi = false; MK.aiPts = []; MK.mode = modeFromSettings(); changed('viz') }
 $$('#mkTarget button').forEach(b => b.onclick = () => pickTarget(b.dataset.t));
 
@@ -757,8 +814,8 @@ const uploadMask = debounce(async () => {
     if (d.token) {
       MURL[tg] = maskC.toDataURL('image/png');
       Object.assign(s, { [k + 'Mask']: d.token, [k + 'X']: d.bbox[0], [k + 'Y']: d.bbox[1], [k + 'W']: Math.max(2, d.bbox[2]), [k + 'H']: Math.max(2, d.bbox[3]) });
-      if (tg === 'fx') s.fxArea = 'mask'; else Object.assign(s, { vizShape: 'mask', vizDock: '' });
-    } else { s[k + 'Mask'] = ''; MURL[tg] = ''; if (tg === 'fx') s.fxArea = 'full'; else s.vizShape = 'box' }
+      if (tg === 'fx') s.fxArea = 'mask'; else Object.assign(s, { vizShape: 'mask', vizDock: '', vizAi: MK.tab === 'ai' });
+    } else { s[k + 'Mask'] = ''; MURL[tg] = ''; if (tg === 'fx') s.fxArea = 'full'; else { s.vizShape = 'box'; s.vizAi = false } }
     changed('viz');
   } catch (e) { toast('Maske: ' + e.message, true) }
 }, 350);
@@ -811,7 +868,7 @@ $('#markSvg').addEventListener('pointerdown', e => {
     if (q && now - MK.lastTap < 450 && Math.hypot((p[0] - q[0]) * fw, (p[1] - q[1]) * fh) < 10) { finishLine(); return }
     MK.lastTap = now; MK.line.push(p); drawMarkSvg(); renderMarkTools(); markHint(); return
   }
-  if (MK.ringAi) { ringFromAi(p); return }
+  if (MK.tab === 'ai' || MK.ringAi) { ringFromAi(p); return }
   MK.start = p; MK.drawing = true; $('#markSvg').setPointerCapture(e.pointerId);
 });
 $('#markSvg').addEventListener('pointermove', e => {
@@ -820,8 +877,8 @@ $('#markSvg').addEventListener('pointermove', e => {
   if (MK.drawing && MK.mode === 'ring') { setRing(MK.start, p); drawMarkSvg() }
 });
 $('#markSvg').addEventListener('pointerup', () => {
-  if (MK.drag >= 0) { MK.drag = -1; changed('viz'); return }
-  if (MK.drawing) { MK.drawing = false; changed('viz') }
+  if (MK.drag >= 0) { MK.drag = -1; setAi(false); changed('viz'); return }
+  if (MK.drawing) { MK.drawing = false; setAi(false); changed('viz') }
 });
 function setRing(c, p) {
   const [fw, fh] = frameSize(), r = Math.max(8, Math.hypot((p[0] - c[0]) * fw, (p[1] - c[1]) * fh)), pts = [];
@@ -832,11 +889,12 @@ function finishLine() {
   const [fw, fh] = frameSize(); MK.line = MK.line.filter((q, i, l) => !i || Math.hypot((q[0] - l[i - 1][0]) * fw, (q[1] - l[i - 1][1]) * fh) > 6);
   if (MK.line.length < 2) { toast('Für eine Linie mindestens zwei Punkte setzen'); return }
   M.Closed = false; M.Path = MK.line.map(q => [+q[0].toFixed(5), +q[1].toFixed(5)]); setShp('path');
-  MK.line = []; changed('viz');
+  MK.line = []; setAi(false); changed('viz');
+  if (MK.tab === 'ai') refineLine();
 }
 async function refineLine() {
   busy('KI legt die Linie an die Kante …');
-  try { const d = await api('/api/mark/refine', { image: S.image.token, settings: S.settings, points: M.Path, closed: false }); M.Path = d.points; changed('viz'); toast('✓ Linie verfeinert') }
+  try { const d = await api('/api/mark/refine', { image: S.image.token, settings: S.settings, points: M.Path, closed: false }); M.Path = d.points; setAi(true); changed('viz'); toast('✓ Die KI hat die Linie an die Kante gelegt') }
   catch (e) { toast(e.message, true) } finally { busy('') }
 }
 async function ringFromAi(p) {
@@ -846,7 +904,7 @@ async function ringFromAi(p) {
     if (!d.bbox) throw new Error('Kein Motiv erkannt – anders klicken');
     const [x, y, w, h] = d.bbox, [fw, fh] = frameSize(), c = [(x + w / 2) / 100, (y + h / 2) / 100];
     const r = Math.max(w / 100 * fw, h / 100 * fh) / 2 * 1.08;
-    setRing(c, [c[0] + r / fw, c[1]]); MK.ringAi = false; changed('viz');
+    setRing(c, [c[0] + r / fw, c[1]]); setAi(true); changed('viz');
     toast(d.method === 'ki' ? '✓ Ring um das Motiv gelegt' : '✓ Ring gelegt (einfache Erkennung)');
   } catch (e) { toast(e.message, true) } finally { busy('') }
 }
@@ -871,11 +929,37 @@ function drawMarkSvg() {
   if (editPts.length) {
     const px = pathPx(editPts, fw, fh), closed = !MK.line.length && M.Closed;
     html += `<polyline points="${px.concat(closed ? [px[0]] : []).map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ')}" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="6 5" opacity=".8"/>`;
-    if (MK.mode === 'line' || (MK.mode === 'ring' && false)) px.forEach((q, i) => { html += `<circle class="pt" data-i="${i}" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="6"/>` });
+    const hand = MK.tab === 'hand' && (MK.target === 'fx' || !s.vizAi) && editPts.length <= 24;
+    if (MK.mode === 'line' && hand) px.forEach((q, i) => { html += `<circle class="pt" data-i="${i}" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="6"/>` });
   }
   svg.innerHTML = html;
 }
+function waveSketch(px, closed, fw, fh, st) {
+  const s = S.settings, n = Math.max(40, Math.round(s.vizDens * 3)), pts = resamplePx(px, n, closed), wv = wav(n, VT, s, 0);
+  const T = s.vizThick / 100 * fh, out = [], q = [];
+  for (let i = 0; i < pts.length; i++) {
+    const A = pts[closed ? (i - 1 + n) % n : Math.max(0, i - 1)], B = pts[closed ? (i + 1) % n : Math.min(n - 1, i + 1)];
+    let nx = -(B[1] - A[1]), ny = B[0] - A[0]; const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
+    const env = closed ? 1 : Math.sin(Math.min(1, i / (n - 1)) * Math.PI) * 0.8 + 0.2, h = wv[i] * T * env;
+    q.push([pts[i][0] + nx * h, pts[i][1] + ny * h]);
+  }
+  if (closed) { q.push(q[0]); pts.push(pts[0]) }
+  const lw = Math.max(1.5, s.vizLine * fh / 540);
+  if (st === 'dots') q.forEach((p, i) => out.push(`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${(lw * 0.9).toFixed(1)}" fill="${colorAt(s, i / q.length, VT)}"/>`));
+  else {
+    const reps = st === 'bundle' ? 3 : 1;
+    for (let r = 0; r < reps; r++) for (let i = 1; i < q.length; i++) {
+      const k = 1 - r * 0.3, a = q[i - 1], b = q[i], m = pts[i - 1], m2 = pts[i];
+      const ax = m[0] + (a[0] - m[0]) * k, ay = m[1] + (a[1] - m[1]) * k, bx = m2[0] + (b[0] - m2[0]) * k, by = m2[1] + (b[1] - m2[1]) * k;
+      out.push(`<line x1="${ax.toFixed(1)}" y1="${ay.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="${colorAt(s, i / q.length, VT)}" stroke-width="${(st === 'line' ? lw * 0.6 : lw).toFixed(1)}" stroke-linecap="round" opacity="${(1 - r * 0.3).toFixed(2)}"/>`);
+    }
+  }
+  const glow = st === 'neon' ? Math.max(s.vizGlow, 65) : s.vizGlow;
+  const f = glow > 0 ? ` style="filter:drop-shadow(0 0 ${Math.round(glow / 9)}px ${colorAt(s, .5, VT)})"` : '';
+  return `<g opacity="${s.vizAlpha / 100}"${f}>${out.join('')}</g>`;
+}
 function pathSketch(px, closed, fw, fh) {
+  if (WAVE_FAMILY.includes(effStyle(S.settings))) return waveSketch(px, closed, fw, fh, effStyle(S.settings));
   const s = S.settings, n = Math.max(16, Math.round(s.vizDens * (closed ? 1.4 : 1))), pts = resamplePx(px, n, closed), sp = spec(n, VT, s);
   let area = 0; if (closed) for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; area += a[0] * b[1] - b[0] * a[1] }
   const T = s.vizThick / 100 * fh, glow = s.vizGlow, out = [];
@@ -899,7 +983,7 @@ async function suggestPlaces() {
   try {
     const d = await api('/api/mark/suggest', { image: S.image.token, settings: S.settings });
     const sb = $('#sugBox'); sb.textContent = ''; sb.hidden = false;
-    d.suggestions.forEach((c, i) => sb.append(el('button', { type: 'button', class: 'sug', style: `left:${c.x}%;top:${c.y}%;width:${c.w}%;height:${c.h}%`, onclick: () => { sb.hidden = true; goDock(c.dock); toast('✓ ' + c.name) } },
+    d.suggestions.forEach((c, i) => sb.append(el('button', { type: 'button', class: 'sug', style: `left:${c.x}%;top:${c.y}%;width:${c.w}%;height:${c.h}%`, onclick: () => { sb.hidden = true; goDock(c.dock, true); toast('✓ ' + c.name + ' – als KI-Welle') } },
       el('span', {}, `${i + 1} · ${c.name} – ${c.why}`))));
     clearTimeout(MK.sugTimer); MK.sugTimer = setTimeout(() => { sb.hidden = true }, 15000);
     if (d.faces) toast(`${d.faces} Gesicht(er) erkannt – die Vorschläge meiden sie.`);
@@ -1093,11 +1177,51 @@ function renderSoon() {
   $('#soonGpu').dataset.lvl = gp.video_ai;
 }
 
+
+/* ---------- Einklappbare Fenster (beim Start alle zu) ---------- */
+const FOLD_SUM = {
+  fmt: s => fmtOf(s.fmt)[1],
+  fit: s => (FITS.find(f => f[0] === s.fit) || FITS[0])[1],
+  viz: s => !s.viz ? 'Aus' : s.vizAi ? '✨ KI-Welle · ' + (AI_WAVES.find(w => w[0] === s.vizAiWave) || AI_WAVES[0])[1] : (VSTYLES.find(x => x[0] === s.vizStyle) || VSTYLES[0])[2],
+  fade: s => {
+    const opt = id => { const o = $(`#${id}`).selectedOptions[0]; return o ? o.textContent : '' };
+    return (s.fadeIn || s.fadeOut) ? `${secDe(s.fadeIn)} / ${secDe(s.fadeOut)} · ${opt('transIn')}` : 'Aus';
+  }
+};
+function foldToggle(box, open) {
+  const head = box.querySelector('.fold-head'), o = open === undefined ? box.classList.contains('folded') : open;
+  box.classList.toggle('folded', !o); head.setAttribute('aria-expanded', String(o));
+  if (o && box.id === 'markBar') renderMark();
+  if (o) requestAnimationFrame(() => { drawWave(); drawMarkSvg() });
+}
+function foldHead(box, head) {
+  head.classList.add('fold-head');
+  if (!head.hasAttribute('role')) { head.setAttribute('role', 'button'); head.tabIndex = 0; head.setAttribute('aria-expanded', 'false') }
+  head.addEventListener('click', e => { if (e.target.closest('button,input,select,a,label')) return; foldToggle(box) });
+  head.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === head) { e.preventDefault(); foldToggle(box) } });
+}
+function setupFolds() {
+  $$('.card[data-fold]').forEach(card => {
+    const head = card.firstElementChild;
+    const sum = el('span', { class: 'fold-sum', 'data-sum': card.dataset.fold }), chev = el('i', { class: 'chev', 'aria-hidden': 'true' });
+    const sw = head.querySelector('.switch');
+    if (sw) head.insertBefore(sum, sw); else head.append(sum);
+    head.append(chev);
+    card.classList.add('folded'); foldHead(card, head);
+  });
+  foldHead($('#markBar'), $('#mkHead'));
+}
+function foldSummaries() {
+  if (!S.settings) return;
+  $$('.fold-sum[data-sum]').forEach(x => { x.textContent = FOLD_SUM[x.dataset.sum](S.settings) });
+}
+setupFolds();
+
 /* ---------- Änderungen ---------- */
 const saveSettings = debounce(() => api('/api/config', { settings: S.settings }).catch(() => {}), 600);
 function changed(what) {
   const s = S.settings;
-  renderFormats(); renderFits(); renderFps(); renderEnc(); renderSeg('#colorSeg', 'color'); renderViz(); renderFx();
+  renderFormats(); renderFits(); renderFps(); renderEnc(); renderSeg('#colorSeg', 'color'); renderViz(); renderFx(); foldSummaries();
   $('#fadeIn').value = s.fadeIn; $('#fadeOut').value = s.fadeOut;
   $('#fiVal').textContent = secDe(s.fadeIn); $('#foVal').textContent = secDe(s.fadeOut);
   $('#lgIn').textContent = secDe(s.fadeIn); $('#lgOut').textContent = secDe(s.fadeOut);
