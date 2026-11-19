@@ -161,7 +161,7 @@ if ($tts) {
   $hj = Invoke-RestMethod -Method Post -Uri "$base/api/highlight" -Headers $h -ContentType 'application/json' -Body (@{ audio = $gs; length = 15; lyrics = $true } | ConvertTo-Json)
   for ($i = 0; $i -lt 600; $i++) { Start-Sleep -Milliseconds 500; $hr = Invoke-RestMethod "$base/api/highlight/$($hj.id)" -Headers $h; if (@('fertig', 'fehler') -contains $hr.state) { break } }
   "Mit Songtext: $($hr.state) $($hr.error) – $($hr.result.lines) Zeilen, Sprache $($hr.result.language), $([math]::Round(((Get-Date) - $t0).TotalSeconds)) s" | Tee-Object -FilePath $Out -Append
-  foreach ($sg in $hr.result.suggestions) { "  $($sg.name): $($sg.start)-$($sg.end) „$($sg.lyric)“" | Tee-Object -FilePath $Out -Append }
+  foreach ($sg in $hr.result.suggestions) { "  $($sg.name): $($sg.start)-$($sg.end) '$($sg.lyric)'" | Tee-Object -FilePath $Out -Append }
   if ($hr.state -ne 'fertig' -or $hr.result.lines -lt 1) { throw 'Songtext-Erkennung hat nichts erkannt' }
 }
 Stop-Process -Id $p.Id -Force
