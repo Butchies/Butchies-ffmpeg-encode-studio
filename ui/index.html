@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ffmpeg_encode Studio</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="gold" data-skin="lounge">
+
+<!-- Start-Animation (wie das Willkommen der Butchies-Webseite) -->
+<div class="splash" id="splash" aria-hidden="true">
+ <div class="sp-orbs"><i></i><i></i><i></i></div>
+ <div class="sp-center">
+  <div class="sp-logo"><span class="sp-ring r1"></span><span class="sp-ring r2"></span><span class="sp-ring r3"></span><span class="sp-eq"><i></i><i></i><i></i><i></i><i></i></span></div>
+  <p class="sp-kicker">Willkommen im</p>
+  <h1 class="sp-title">ffmpeg_encode Studio</h1>
+  <p class="sp-tag">Dein Song. Dein Bild. Fertig für YouTube.</p>
+  <p class="sp-skip">Klicken zum Überspringen</p>
+ </div>
+</div>
+
+<div class="grips" aria-hidden="true"><i data-edge="t"></i><i data-edge="b"></i><i data-edge="l"></i><i data-edge="r"></i><i data-edge="tl"></i><i data-edge="tr"></i><i data-edge="bl"></i><i data-edge="br"></i></div>
+
+<header class="top">
+ <div class="brand dragzone">
+  <span class="mark dragzone" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg></span>
+  <div class="dragzone"><b class="dragzone">ffmpeg_encode Studio</b><small class="dragzone">MP3 + Bild → fertiges YouTube-Video</small></div>
+ </div>
+ <div class="dragzone drag-fill"></div>
+ <nav class="top-actions" aria-label="Werkzeuge">
+  <button type="button" class="btn ghost" id="themeBtn"><span class="theme-dot" aria-hidden="true"></span><span class="lbl">Design</span></button>
+  <button type="button" class="btn ghost" id="queueBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="lbl">Warteschlange</span><span class="badge" id="queueBadge" hidden>0</span></button>
+  <button type="button" class="btn ghost" id="folderBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="lbl">Meine Videos</span></button>
+  <button type="button" class="btn ghost quit" id="quitBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg><span class="lbl">Beenden</span></button>
+ </nav>
+ <div class="winctl" aria-label="Fenster">
+  <button type="button" id="winMin" aria-label="Minimieren"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+  <button type="button" id="winMax" aria-label="Maximieren"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1.5"/></svg></button>
+  <button type="button" id="winClose" class="x" aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+ </div>
+</header>
+
+<div class="warnbar" id="ffWarn" hidden>FFmpeg wurde nicht gefunden. Bitte <b>ffmpeg_encode Studio</b> neu installieren – der Installer bringt FFmpeg mit.</div>
+
+<main class="layout">
+ <!-- LINKS -->
+ <section class="col" aria-label="Dateien und Format">
+  <div class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint">
+   <span class="drop-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></span>
+   <b>MP3 &amp; Bild hierher ziehen</b>
+   <small id="dropHint">Audio: MP3, WAV, FLAC, M4A, OGG · Bild: JPG, PNG, WEBP – auch beide auf einmal</small>
+   <span class="btn small">Dateien auswählen</span>
+   <input type="file" id="fileInput" multiple hidden accept="audio/*,image/*,.mp3,.wav,.flac,.m4a,.ogg,.aac,.jpg,.jpeg,.png,.webp,.bmp">
+  </div>
+  <div class="files" id="files"></div>
+
+  <div class="card">
+   <h2><span class="n">1</span> Zielformat</h2>
+   <div class="fmt-list" id="fmtList"></div>
+  </div>
+
+  <div class="card">
+   <h2><span class="n">2</span> Bild-Anpassung</h2>
+   <div class="opt-list" id="fitList"></div>
+  </div>
+
+  <div class="card">
+   <div class="row-between">
+    <h2><span class="n">3</span> Audio-Visualizer</h2>
+    <button type="button" class="switch" id="vizSwitch" role="switch" aria-checked="false" aria-label="Audio-Visualizer einblenden"><i></i></button>
+   </div>
+   <p class="hint">Bewegte Wellen oder Balken zur Musik – am unteren Bildrand.</p>
+   <div class="viz-opts" id="vizOpts">
+    <div class="seg" id="vizStyle" role="group" aria-label="Stil">
+     <button type="button" data-v="wave">Wellenform</button>
+     <button type="button" data-v="bars">Spektrum</button>
+    </div>
+    <div class="colors" id="vizColors" role="group" aria-label="Farbe"></div>
+   </div>
+  </div>
+ </section>
+
+ <!-- MITTE -->
+ <section class="col center" aria-label="Vorschau und Länge">
+  <div class="card">
+   <div class="row-between">
+    <h2>Vorschau</h2>
+    <div class="chips"><span class="chip" id="resChip">3840 × 2160</span><span class="chip" id="fpsChip">30 fps</span><span class="chip acc" id="kindChip">Video · 16:9</span></div>
+   </div>
+   <div class="stage" id="stage">
+    <div class="frame" id="frame">
+     <img id="stillImg" alt="Vorschau des fertigen Videobilds" hidden>
+     <div class="frame-empty" id="frameEmpty"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 8"/></svg><span>Bild hierher ziehen</span></div>
+     <div class="viz-prev" id="vizPrev" aria-hidden="true"></div>
+     <div class="fade-veil" id="fadeVeil" aria-hidden="true"></div>
+     <video id="clipVid" muted playsinline hidden aria-label="Vorschau des Übergangs"></video>
+     <span class="time-chip" id="timeChip">0:00 / 0:00</span>
+     <div class="busy" id="stillBusy" hidden><span class="spin"></span></div>
+    </div>
+   </div>
+   <div class="transport">
+    <button type="button" class="play" id="playBtn" aria-label="Song anhören" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>
+    <span class="t" id="tNow">0:00</span>
+    <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Abspielposition" disabled>
+    <span class="t" id="tDur">0:00</span>
+   </div>
+   <audio id="audio" preload="metadata"></audio>
+  </div>
+
+  <div class="card">
+   <div class="row-between">
+    <h2>Zeitleiste &amp; Länge</h2>
+    <div class="legend"><span><i class="lg-in"></i>Fade-In <b id="lgIn">2,0 s</b></span><span><i class="lg-out"></i>Fade-Out <b id="lgOut">3,0 s</b></span></div>
+   </div>
+   <div class="timeline" id="timeline">
+    <canvas id="wave" aria-hidden="true"></canvas>
+    <div class="tl-dim l" id="dimL"></div><div class="tl-dim r" id="dimR"></div>
+    <div class="tl-fade in" id="tlIn"></div><div class="tl-fade out" id="tlOut"></div>
+    <div class="tl-head" id="tlHead"></div>
+    <span class="tl-empty" id="tlEmpty">Zuerst einen Song hineinziehen</span>
+   </div>
+   <div class="ticks" id="ticks"></div>
+   <div class="grid3">
+    <label class="field"><span>Start</span><input id="tStart" inputmode="numeric" placeholder="0:00" autocomplete="off"></label>
+    <label class="field"><span>Ende <small>(leer = Song-Ende)</small></span><input id="tEnd" inputmode="numeric" placeholder="Song-Ende" autocomplete="off"></label>
+    <div class="field"><span>Videolänge</span><div class="readout"><b id="durOut">0:00</b><button type="button" class="btn tiny" id="resetTime">= ganzer Song</button></div></div>
+   </div>
+   <div class="notes" id="notes" role="status"></div>
+  </div>
+
+  <details class="card cmd">
+   <summary><h2>FFmpeg-Befehl</h2><small>wird live aus deinen Einstellungen erzeugt</small></summary>
+   <div class="cmd-tools"><button type="button" class="btn small" id="copyCmd"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>Kopieren</button></div>
+   <pre id="cmdText"></pre>
+  </details>
+ </section>
+
+ <!-- RECHTS -->
+ <section class="col" aria-label="Einstellungen und Ausgabe">
+  <div class="card">
+   <h2><span class="n">4</span> Bildrate (FPS)</h2>
+   <div class="seg five" id="fpsSeg" role="group" aria-label="Bilder pro Sekunde"></div>
+   <p class="hint">Standbild + Musik: 24–30 fps reichen. Mit Visualizer wirken 50/60 fps flüssiger.</p>
+  </div>
+
+  <div class="card">
+   <h2><span class="n">5</span> Fade-Effekte</h2>
+   <div class="presets" id="presets"></div>
+   <label class="field range"><span>Fade-In <b id="fiVal">2,0 s</b></span><input type="range" id="fadeIn" min="0" max="10" step="0.5"></label>
+   <label class="field range"><span>Fade-Out <b id="foVal">3,0 s</b></span><input type="range" id="fadeOut" min="0" max="10" step="0.5"></label>
+   <div class="field"><span>Bild kommt <small>(Übergang am Anfang)</small></span>
+    <div class="trans-row"><select id="transIn" aria-label="Übergang am Anfang"></select><button type="button" class="btn small" id="prevIn" aria-label="Übergang am Anfang ansehen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Ansehen</button></div>
+   </div>
+   <div class="field"><span>Bild geht <small>(Übergang am Ende)</small></span>
+    <div class="trans-row"><select id="transOut" aria-label="Übergang am Ende"></select><button type="button" class="btn small" id="prevOut" aria-label="Übergang am Ende ansehen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Ansehen</button></div>
+   </div>
+   <div class="field"><span>Übergangsfarbe</span>
+    <div class="seg" id="colorSeg" role="group" aria-label="Blendenfarbe"><button type="button" data-v="black"><i class="sw" style="background:#000"></i>Schwarz</button><button type="button" data-v="white"><i class="sw" style="background:#fff"></i>Weiß</button></div>
+   </div>
+   <label class="field"><span>Anwenden auf</span>
+    <select id="target"><option value="av">Bild + Ton</option><option value="v">Nur Bild</option><option value="a">Nur Ton</option></select>
+   </label>
+  </div>
+
+  <div class="card">
+   <h2><span class="n">6</span> Encoding &amp; Ausgabe</h2>
+   <div class="field"><span>Video-Encoder</span><div class="enc-grid" id="encGrid"></div></div>
+   <label class="field"><span>Qualität</span>
+    <select id="quality"><option value="16">Maximal (größte Datei, langsam)</option><option value="18">Hoch – empfohlen</option><option value="22">Schnell (kleinere Datei)</option></select>
+   </label>
+   <div class="kv"><span>Ton</span><b>AAC · 384 kbps · 48 kHz · Stereo</b></div>
+   <div class="kv"><span>Datei</span><b>MP4 · faststart · yuv420p · BT.709</b></div>
+   <label class="field"><span>Dateiname</span><input id="outName" autocomplete="off" spellcheck="false"></label>
+   <div class="field"><span>Speichern in</span>
+    <div class="folder"><code id="outDir" title=""></code><button type="button" class="btn small" id="pickDir">Ändern</button></div>
+   </div>
+  </div>
+
+  <button type="button" class="btn glow big" id="goBtn" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><span>Für YouTube konvertieren<small id="goSub">Zuerst Song und Bild hineinziehen</small></span></button>
+  <button type="button" class="btn wide" id="queueAdd" disabled>Zur Warteschlange hinzufügen</button>
+ </section>
+</main>
+
+<footer class="bottom">
+ <span class="st"><i class="dot" id="ffDot"></i><span id="ffText">FFmpeg wird gesucht …</span></span>
+ <span class="st" id="hwText"></span>
+ <span class="st grow"></span>
+ <span class="st">Version <b id="verText">–</b></span>
+</footer>
+
+<!-- Konvertierung -->
+<dialog id="progDlg" aria-labelledby="pgTitle">
+ <div class="pg">
+  <div class="pg-head">
+   <div class="pg-ico" id="pgIco" aria-hidden="true"></div>
+   <div class="pg-t"><h2 id="pgTitle">Wird konvertiert …</h2><code id="pgFile"></code></div>
+  </div>
+  <div class="pg-big"><span id="pgPct">0 %</span><small id="pgPhase">Startet …</small></div>
+  <div class="segbar" id="pgBar" role="progressbar" aria-label="Fortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+  <div class="pg-scale"><span>0 %</span><span>25 %</span><span>50 %</span><span>75 %</span><span>100 %</span></div>
+  <div class="pg-stats">
+   <div><small>Format</small><b id="pgFmt">–</b></div>
+   <div><small>Verarbeitet</small><b id="pgTime">–</b></div>
+   <div><small>Tempo</small><b id="pgSpeed">–</b></div>
+   <div><small>Restzeit</small><b id="pgEta">–</b></div>
+  </div>
+  <pre class="pg-log" id="pgLog"></pre>
+  <div class="pg-err" id="pgErr" hidden></div>
+  <div class="pg-actions">
+   <button type="button" class="btn" id="pgHide">Im Hintergrund weiter</button>
+   <button type="button" class="btn danger" id="pgCancel">Abbrechen</button>
+   <button type="button" class="btn" id="pgShow" hidden>Im Ordner zeigen</button>
+   <button type="button" class="btn glow" id="pgNew" hidden>Fertig</button>
+  </div>
+ </div>
+</dialog>
+
+<!-- Warteschlange -->
+<dialog id="queueDlg" aria-labelledby="qTitle">
+ <div class="dlg">
+  <div class="dlg-head"><h2 id="qTitle">Warteschlange</h2><button type="button" class="x" data-close aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="qlist" id="qList"></div>
+  <div class="dlg-actions"><button type="button" class="btn" id="qClear">Erledigte entfernen</button><button type="button" class="btn glow" data-close>Schließen</button></div>
+ </div>
+</dialog>
+
+<!-- Designs -->
+<dialog id="themeDlg" aria-labelledby="thTitle">
+ <div class="dlg wide">
+  <div class="dlg-head"><h2 id="thTitle">Design wählen</h2><button type="button" class="x" data-close aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <p class="hint">Die Designs der Butchies-Webseite – mit Farben und Schriften.</p>
+  <div class="themes" id="themeGrid"></div>
+  <label class="check"><input type="checkbox" id="introCheck"> Start-Animation beim Programmstart zeigen</label>
+  <div class="dlg-actions"><button type="button" class="btn glow" data-close>Fertig</button></div>
+ </div>
+</dialog>
+
+<!-- Fragen -->
+<dialog id="askDlg" aria-labelledby="askTitle">
+ <div class="dlg">
+  <h2 id="askTitle"></h2>
+  <p id="askText"></p>
+  <div class="dlg-actions"><button type="button" class="btn" id="askNo">Abbrechen</button><button type="button" class="btn glow" id="askYes">OK</button></div>
+ </div>
+</dialog>
+
+<!-- Auf Wiedersehen (wie auf der Butchies-Webseite) -->
+<section id="goodbye" class="goodbye" hidden aria-live="polite">
+ <div class="g-orbs" aria-hidden="true"><i></i><i></i><i></i></div>
+ <div class="g-center">
+  <div class="g-logo" aria-hidden="true"><span class="sp-ring r1"></span><span class="sp-ring r2"></span><span class="sp-ring r3"></span><span class="g-eq"><i></i><i></i><i></i><i></i><i></i></span></div>
+  <p class="g-kicker">Danke fürs Erstellen</p>
+  <h1 class="g-title">Bis bald!</h1>
+  <p class="g-tag">ffmpeg_encode Studio · Butchies</p>
+  <p class="g-hint" id="gHint">Deine Videos warten schon auf YouTube.</p>
+ </div>
+ <span class="g-wave" aria-hidden="true"></span>
+</section>
+
+<div class="dropveil" id="dropveil" aria-hidden="true"><div><b>Loslassen zum Hinzufügen</b><small>Song und/oder Bild</small></div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>

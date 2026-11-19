@@ -1,0 +1,39 @@
+ffmpeg_encode Studio
+====================
+
+Macht aus einem Song (MP3, WAV, FLAC, M4A …) und einem Bild ein fertiges YouTube-Video –
+in 4K, 1440p, 1080p oder als YouTube Shorts (9:16).
+
+So geht's
+---------
+1. Programm starten (Startmenü oder Desktop: „ffmpeg_encode Studio“).
+2. Song und Bild ins Fenster ziehen (oder „Dateien auswählen“).
+3. Zielformat, Bild-Anpassung, FPS und Übergänge wählen.
+   - „Bild kommt“ / „Bild geht“: 36 Übergänge, mit „Ansehen“ siehst du sie sofort mit deinem Bild.
+   - Start / Ende: nur einen Teil des Songs verwenden (z. B. 0:30 bis 1:20).
+   - Shorts sind höchstens 3:00 Minuten lang – das Programm achtet automatisch darauf.
+4. „Für YouTube konvertieren“ – der Fortschritt läuft in Prozent mit.
+5. Fertig: „Im Ordner zeigen“ – die Datei kann direkt zu YouTube hochgeladen werden.
+
+Grafikkarte
+-----------
+Unter „Video-Encoder“ steht „Automatisch (schnellste)“: Das Programm prüft beim Start,
+ob eine NVIDIA- (NVENC), Intel- (Quick Sync) oder AMD-Grafikkarte (AMF) nutzbar ist,
+und nimmt sie. Klappt es mit der Grafikkarte einmal nicht, macht es von selbst mit der CPU weiter.
+
+Ausgabe (von YouTube empfohlen)
+-------------------------------
+MP4, H.264 (oder H.265), yuv420p, BT.709, geschlossene GOP (halbe Bildrate),
+Ton AAC 384 kbps / 48 kHz / Stereo, „faststart“ für schnelle Verarbeitung.
+
+Speicherorte
+------------
+Fertige Videos:  Ordner „Videos\ffmpeg_encode Studio“ (änderbar unter „Speichern in“)
+Einstellungen:   %APPDATA%\ffmpeg_encode Studio\config.json
+
+Mitgeliefert
+------------
+- FFmpeg + FFprobe (GPL-Build von https://github.com/BtbN/FFmpeg-Builds, Lizenz im Ordner „ffmpeg“,
+  Quellcode: https://ffmpeg.org) mit x264, x265, AAC, NVENC, Quick Sync und AMF.
+- Microsoft WebView2 (wird nur installiert, falls es auf dem PC fehlt; unter Windows 10/11 meist schon da).
+- Schriften der Butchies-Webseite (SIL Open Font License, Lizenzen im Programmordner unter ui\fonts).
