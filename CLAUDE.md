@@ -6,6 +6,8 @@ Windows-Programm: Song + Bild → YouTube-Video (4K/1440p/1080p, Shorts 9:16, Sh
 - Bild wird einmal per `still_command` auf Zielgröße gebracht (Fit: blur/cover/contain), dann im Video per `loop`-Filter wiederholt (schneller als `-loop 1`).
 - Übergänge: `TRANSITIONS` (36, FFmpeg `xfade`) über `transition_graph` – Farbe→Bild (Bild kommt) und Bild→Farbe (Bild geht); Ton-Fades per `afade`. Vorschau-Clip `/api/trans-preview`.
 - Encoder: `auto` = erste funktionierende Grafikkarte (`GPU_ORDER` nvenc, qsv, amf; Test in `hw_check`), sonst x264; scheitert die GPU, automatischer Rückfall auf x264 (`run_job`).
+- Visualizer `viz.py` (seit 1.1.0): 20 Stile (`STYLES`), Farbarten solid/gradient/rainbow/random/sound, freie Position `vizX/Y/W/H` in % + Andockplatz `vizDock` (UI rechnet Position), Regler vizStr/Alpha/Glow/Dens/Smooth/Line, Schalter vizCenter/Floor/Soft. Graph: Ton -> Graustufen -> Leuchten (halbtransparent, `lighten`) -> Alpha (Deckkraft, weiche Ränder) + Farbverlauf (`gradients`) -> `alphamerge` -> overlay. „Nach Sound“: `sound_commands` (reines Python, RMS + Nulldurchgänge) -> sendcmd-Datei im Arbeitsordner (FFmpeg läuft mit cwd=STAGE). ACHTUNG: kein `fps`-Filter direkt nach showwaves (Speicher läuft voll); Spektrum-Höhe über höher rendern + crop (`stretch`).
+- Vorlagen in config `presets`; Projekte `.fesproj` (ZIP: projekt.json + Song + Bild) in `<Ausgabeordner>/Projekte`.
 - Oberfläche `ui/`: 7 Designs + Schriften + Start-Animation (`#splash`) + Abschied (`#goodbye`, Beenden-Knopf) von der Webseite Butchies/butchies-raucherstube (V2).
 - Einstellungen: `%APPDATA%\ffmpeg_encode Studio\config.json`; Videos standardmäßig in `Videos\ffmpeg_encode Studio`.
 

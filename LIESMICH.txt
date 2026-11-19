@@ -15,6 +15,19 @@ So geht's
 4. „Für YouTube konvertieren“ – der Fortschritt läuft in Prozent mit.
 5. Fertig: „Im Ordner zeigen“ – die Datei kann direkt zu YouTube hochgeladen werden.
 
+Audio-Visualizer (ab 1.1.0)
+---------------------------
+- 20 Stile und 5 Farbarten (Einfarbig, Verlauf, Regenbogen, Zufall, Nach Sound).
+- Im Vorschaubild ziehen = verschieben, an den Ecken ziehen = Größe. Er rastet an 9 Plätzen
+  und 3 Bändern ein (abschaltbar in der Werkstatt).
+- „Vorschau mit Ton“ rendert 6 Sekunden genau so, wie es im Video aussieht.
+
+Vorlagen & Projekte
+-------------------
+- „Speichern …“: als Vorlage (nur Einstellungen) oder als Projekt (.fesproj mit Song und Bild).
+- „Laden …“ oder einfach eine .fesproj-Datei ins Fenster ziehen.
+- Projekte liegen im Ordner „Projekte“ bei deinen Videos.
+
 Grafikkarte
 -----------
 Unter „Video-Encoder“ steht „Automatisch (schnellste)“: Das Programm prüft beim Start,

@@ -44,15 +44,22 @@
 
 <div class="warnbar" id="ffWarn" hidden>FFmpeg wurde nicht gefunden. Bitte <b>ffmpeg_encode Studio</b> neu installieren – der Installer bringt FFmpeg mit.</div>
 
+<section class="presetbar" aria-label="Vorlagen speichern und laden">
+ <span class="pb-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>Meine Vorlagen</span>
+ <div class="pb-chips" id="presetChips" role="group" aria-label="Gespeicherte Vorlagen"></div>
+ <button type="button" class="btn glow small" id="saveBtn">Speichern …</button>
+ <button type="button" class="btn small" id="loadBtn">Laden …</button>
+</section>
+
 <main class="layout">
  <!-- LINKS -->
  <section class="col" aria-label="Dateien und Format">
   <div class="drop" id="drop" tabindex="0" role="button" aria-describedby="dropHint">
    <span class="drop-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></span>
    <b>MP3 &amp; Bild hierher ziehen</b>
-   <small id="dropHint">Audio: MP3, WAV, FLAC, M4A, OGG · Bild: JPG, PNG, WEBP – auch beide auf einmal</small>
+   <small id="dropHint">Audio: MP3, WAV, FLAC, M4A, OGG · Bild: JPG, PNG, WEBP – auch beide auf einmal · Projekte (.fesproj)</small>
    <span class="btn small">Dateien auswählen</span>
-   <input type="file" id="fileInput" multiple hidden accept="audio/*,image/*,.mp3,.wav,.flac,.m4a,.ogg,.aac,.jpg,.jpeg,.png,.webp,.bmp">
+   <input type="file" id="fileInput" multiple hidden accept=".fesproj,audio/*,image/*,.mp3,.wav,.flac,.m4a,.ogg,.aac,.jpg,.jpeg,.png,.webp,.bmp">
   </div>
   <div class="files" id="files"></div>
 
@@ -66,20 +73,6 @@
    <div class="opt-list" id="fitList"></div>
   </div>
 
-  <div class="card">
-   <div class="row-between">
-    <h2><span class="n">3</span> Audio-Visualizer</h2>
-    <button type="button" class="switch" id="vizSwitch" role="switch" aria-checked="false" aria-label="Audio-Visualizer einblenden"><i></i></button>
-   </div>
-   <p class="hint">Bewegte Wellen oder Balken zur Musik – am unteren Bildrand.</p>
-   <div class="viz-opts" id="vizOpts">
-    <div class="seg" id="vizStyle" role="group" aria-label="Stil">
-     <button type="button" data-v="wave">Wellenform</button>
-     <button type="button" data-v="bars">Spektrum</button>
-    </div>
-    <div class="colors" id="vizColors" role="group" aria-label="Farbe"></div>
-   </div>
-  </div>
  </section>
 
  <!-- MITTE -->
@@ -93,7 +86,13 @@
     <div class="frame" id="frame">
      <img id="stillImg" alt="Vorschau des fertigen Videobilds" hidden>
      <div class="frame-empty" id="frameEmpty"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 8"/></svg><span>Bild hierher ziehen</span></div>
-     <div class="viz-prev" id="vizPrev" aria-hidden="true"></div>
+     <div class="dock-ghost" id="dockGhost" hidden aria-hidden="true"></div>
+     <div class="dock-marks" id="dockMarks" hidden aria-hidden="true"></div>
+     <div class="vizbox" id="vizBox" hidden>
+      <svg id="vizSvg" aria-hidden="true"></svg>
+      <span class="vb-label" id="vbLabel"></span>
+      <i class="vb-h" data-h="nw" aria-hidden="true"></i><i class="vb-h" data-h="ne" aria-hidden="true"></i><i class="vb-h" data-h="sw" aria-hidden="true"></i><i class="vb-h" data-h="se" aria-hidden="true"></i>
+     </div>
      <div class="fade-veil" id="fadeVeil" aria-hidden="true"></div>
      <video id="clipVid" muted playsinline hidden aria-label="Vorschau des Übergangs"></video>
      <span class="time-chip" id="timeChip">0:00 / 0:00</span>
@@ -107,6 +106,39 @@
     <span class="t" id="tDur">0:00</span>
    </div>
    <audio id="audio" preload="metadata"></audio>
+   <p class="hint" id="vizHint" hidden>Visualizer im Bild <b>ziehen</b> = verschieben · <b>Ecken</b> = Größe · rastet an 9 Plätzen und 3 Bändern ein · <b id="dockStatus"></b></p>
+  </div>
+
+  <div class="card vizcard" id="vizCard">
+   <div class="row-between">
+    <h2><span class="n">3</span> Audio-Visualizer</h2>
+    <button type="button" class="switch" id="vizSwitch" role="switch" aria-checked="false" aria-label="Audio-Visualizer einblenden"><i></i></button>
+   </div>
+   <div class="viz-tiles" id="vizTiles" role="group" aria-label="Stil"></div>
+   <div class="viz-cols">
+    <div class="field"><span>Farbe</span>
+     <div class="modes" id="vizModes" role="group" aria-label="Farbart"></div>
+     <div class="vcolors" id="vizColorRow">
+      <label class="cpick"><input type="color" id="vizC1" aria-label="Farbe 1"><span>Farbe 1</span></label>
+      <label class="cpick" id="vizC2Wrap"><input type="color" id="vizC2" aria-label="Farbe 2"><span>Farbe 2</span></label>
+      <button type="button" class="btn tiny" id="vizDesign">Design-Farben</button>
+      <button type="button" class="btn tiny" id="vizReroll" hidden>Neu würfeln</button>
+     </div>
+     <small class="mhint" id="vizModeHint"></small>
+    </div>
+    <div class="field"><span>Andocken</span>
+     <div class="dockgrid" id="dockGrid" role="group" aria-label="Andockplatz"></div>
+     <div class="bands" id="bandList"></div>
+    </div>
+    <div class="field"><span>Schnell-Regler</span>
+     <div class="sliders" id="quickSliders"></div>
+    </div>
+   </div>
+   <div class="viz-foot">
+    <button type="button" class="btn" id="vizWorkshop"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Alle Werkzeuge (Werkstatt)</button>
+    <button type="button" class="btn accent" id="vizPreviewBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Vorschau mit Ton (6 s)</button>
+    <small>Beim Anhören zeigt die Vorschau die echten Frequenzen deines Songs.</small>
+   </div>
   </div>
 
   <div class="card">
@@ -258,6 +290,55 @@
  </div>
  <span class="g-wave" aria-hidden="true"></span>
 </section>
+
+<!-- Visualizer-Werkstatt -->
+<dialog id="vizDlg" aria-labelledby="vzTitle">
+ <div class="dlg">
+  <div class="dlg-head"><h2 id="vzTitle">Visualizer-Werkstatt</h2><button type="button" class="x" data-close aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <p class="hint">Alle Regler wirken sofort im Vorschaubild. Mit „Vorschau mit Ton“ hörst und siehst du das echte Ergebnis.</p>
+  <div class="ws-grid">
+   <div class="sliders" id="allSliders"></div>
+   <div>
+    <div class="toggles" id="vizToggles"></div>
+    <div class="field"><span>Position &amp; Größe (in % vom Bild)</span>
+     <div class="pos-grid">
+      <label>X<input type="number" id="posX" min="0" max="95" step="0.5"></label>
+      <label>Y<input type="number" id="posY" min="0" max="97" step="0.5"></label>
+      <label>Breite<input type="number" id="posW" min="5" max="100" step="0.5"></label>
+      <label>Höhe<input type="number" id="posH" min="3" max="100" step="0.5"></label>
+     </div>
+    </div>
+   </div>
+  </div>
+  <div class="dlg-actions"><button type="button" class="btn accent" id="vizPreviewBtn2">▶ Vorschau mit Ton</button><button type="button" class="btn glow" data-close>Fertig</button></div>
+ </div>
+</dialog>
+
+<!-- Speichern -->
+<dialog id="saveDlg" aria-labelledby="svTitle">
+ <div class="dlg">
+  <div class="dlg-head"><h2 id="svTitle">Speichern</h2><button type="button" class="x" data-close aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="seg" id="saveKind" role="group" aria-label="Was speichern"><button type="button" data-v="settings">Nur Einstellungen (Vorlage)</button><button type="button" data-v="project">Projekt mit Song &amp; Bild</button></div>
+  <p class="hint" id="saveHint"></p>
+  <label class="field"><span>Name</span><input id="saveName" maxlength="60" autocomplete="off" placeholder="z. B. Neon-Short"></label>
+  <div class="dlg-actions"><button type="button" class="btn" data-close>Abbrechen</button><button type="button" class="btn glow" id="saveGo">Speichern</button></div>
+ </div>
+</dialog>
+
+<!-- Laden -->
+<dialog id="loadDlg" aria-labelledby="ldTitle">
+ <div class="dlg wide">
+  <div class="dlg-head"><h2 id="ldTitle">Laden</h2><button type="button" class="x" data-close aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="load-cols">
+   <div><h3>Vorlagen <small>(nur Einstellungen)</small></h3><div class="llist" id="loadPresets"></div></div>
+   <div><h3>Projekte <small>(mit Song &amp; Bild)</small></h3><div class="llist" id="loadProjects"></div>
+    <div class="load-tools"><button type="button" class="btn small" id="openProjFile">Projektdatei öffnen …</button><button type="button" class="btn small" id="showProjDir">Ordner zeigen</button>
+    <input type="file" id="projInput" accept=".fesproj" hidden></div>
+   </div>
+  </div>
+  <div class="dlg-actions"><button type="button" class="btn glow" data-close>Schließen</button></div>
+ </div>
+</dialog>
 
 <div class="dropveil" id="dropveil" aria-hidden="true"><div><b>Loslassen zum Hinzufügen</b><small>Song und/oder Bild</small></div></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>

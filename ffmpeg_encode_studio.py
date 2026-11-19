@@ -4,12 +4,14 @@ Alles per Drag & Drop: Song und Bild hineinziehen, Format, FPS, Fades und Länge
 Technik: Python-Standardbibliothek + FFmpeg (wird vom Installer mitgeliefert). Die Oberfläche läuft in einem
 rahmenlosen Programmfenster (WebView2 über pywebview); ohne WebView2 öffnet sich ein Edge/Chrome-App-Fenster.
 """
-import json, mimetypes, os, re, secrets, shutil, subprocess, sys, tempfile, threading, time, urllib.parse, webbrowser
+import json, mimetypes, os, re, secrets, shutil, subprocess, sys, tempfile, threading, time, urllib.parse, webbrowser, zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import viz
+
 APP_NAME = 'ffmpeg_encode Studio'
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -66,8 +68,9 @@ TRANSITIONS = [
 TRANS_IDS = {t[1] for t in TRANSITIONS} | {'none'}
 
 DEFAULTS = {'fmt': 'yt4k', 'fps': 30, 'fadeIn': 2.0, 'fadeOut': 3.0, 'color': 'black', 'target': 'av', 'fit': 'blur',
-            'enc': 'auto', 'quality': '18', 'viz': False, 'vizStyle': 'wave', 'vizColor': '#ffffff', 'start': '0:00', 'end': '',
+            'enc': 'auto', 'quality': '18', 'start': '0:00', 'end': '',
             'transIn': 'fade', 'transOut': 'fade'}
+DEFAULTS.update(viz.DEFAULTS)
 
 STAGED = {}        # token -> {'path', 'name', 'kind', 'info'}
 JOBS = {}          # id -> job dict
@@ -259,11 +262,7 @@ def clean_settings(s):
     if str(out['quality']) not in QUALITY:
         out['quality'] = '18'
     out['quality'] = str(out['quality'])
-    out['viz'] = bool(out['viz'])
-    if out['vizStyle'] not in ('wave', 'bars'):
-        out['vizStyle'] = 'wave'
-    if not re.fullmatch(r'#[0-9a-fA-F]{6}', str(out['vizColor'])):
-        out['vizColor'] = '#ffffff'
+    viz.clean(s, out)
     return out
 
 
@@ -332,9 +331,10 @@ def transition_graph(vchain, w, h, fps, dur, fi, fo, t_in, t_out, color, label='
     return out
 
 
-def encode_command(still_png, audio_path, out_path, s, audio_dur):
-    s = dict(s, enc=resolve_enc(s['enc']))
+def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fast=False, cmdfile=None):
+    s = dict(s, enc='x264' if fast else resolve_enc(s['enc']))
     name, w, h, vertical = FORMATS[s['fmt']]
+    w, h = int(w * scale) // 2 * 2, int(h * scale) // 2 * 2
     fps = s['fps']
     start, dur, fi, fo, notes = timing(s, audio_dur)
     do_v, do_a = s['target'] != 'a', s['target'] != 'v'
@@ -350,16 +350,9 @@ def encode_command(still_png, audio_path, out_path, s, audio_dur):
     vid = '[0:v]format=yuv420p,loop=loop=-1:size=1:start=0,fps=%d,setpts=N/%d/TB' % (fps, fps)
     if s['viz']:
         parts.append('[1:a]%s,asplit=2[aout][av]' % ','.join(afx))
-        vw, vh = int(w * (0.8 if not vertical else 0.86)) // 2 * 2, int(h * (0.16 if not vertical else 0.09)) // 2 * 2
-        r, g, b = (int(s['vizColor'][i:i + 2], 16) / 255 for i in (1, 3, 5))
-        tint = 'format=rgba,colorchannelmixer=rr=%.3f:gg=%.3f:bb=%.3f,format=yuva420p' % (r, g, b)
-        if s['vizStyle'] == 'bars':
-            parts.append('[av]showfreqs=s=%dx%d:mode=bar:ascale=cbrt:fscale=log:win_size=2048:rate=%d:colors=white,'
-                         'colorkey=black:0.02:0,%s[wv]' % (vw, vh, fps, tint))
-        else:
-            parts.append('[av]showwaves=s=%dx%d:mode=cline:draw=full:rate=%d:scale=sqrt:colors=white,%s[wv]' % (vw, vh, fps, tint))
-        y = 'H-h-%d' % int(h * (0.08 if not vertical else 0.14))
-        parts.append('%s[base];[base][wv]overlay=(W-w)/2:%s:shortest=0:eof_action=pass,format=yuv420p' % (vid, y))
+        vparts, ox, oy = viz.graph(s, w, h, fps, dur, cmdfile)
+        parts.extend(vparts)
+        parts.append('%s[base];[base][wv]overlay=%d:%d:shortest=0:eof_action=pass,format=yuv420p' % (vid, ox, oy))
         vchain = parts.pop()
     else:
         parts.append('[1:a]%s[aout]' % ','.join(afx))
@@ -382,7 +375,7 @@ def encode_command(still_png, audio_path, out_path, s, audio_dur):
     elif s['enc'] == 'amf':
         venc = ['-c:v', 'h264_amf', '-quality', 'quality', '-rc', 'cqp', '-qp_i', str(q + 2), '-qp_p', str(q + 4)]
     else:
-        venc = ['-c:v', 'libx264', '-preset', preset, '-crf', str(q), '-profile:v', 'high']
+        venc = ['-c:v', 'libx264', '-preset', 'ultrafast' if fast else preset, '-crf', str(26 if fast else q), '-profile:v', 'high']
         if not s['viz']:
             venc += ['-tune', 'stillimage']
     venc += ['-g', str(gop), '-bf', '2', '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']
@@ -405,7 +398,8 @@ def quote(a):
 
 
 def command_text(s, audio_name, image_name, out_name, audio_dur):
-    args, meta = encode_command('bild.png', audio_name or 'song.mp3', out_name or 'video.mp4', s, audio_dur)
+    args, meta = encode_command('bild.png', audio_name or 'song.mp3', out_name or 'video.mp4', s, audio_dur,
+                                cmdfile='klang.txt' if s['viz'] and s['vizMode'] == 'sound' else None)
     args[0] = 'ffmpeg'
     pre = 'ffmpeg -i %s -filter_complex "%s" -frames:v 1 bild.png' % (quote(image_name or 'bild.jpg'), fit_filter(s['fit'], meta['width'], meta['height']))
     return pre + '\n\n' + ' '.join(quote(a) for a in args), meta
@@ -435,6 +429,31 @@ def transition_preview(img_path, out_mp4, s, which):
              '-movflags', '+faststart', str(out_mp4)], timeout=120)
     still.unlink(missing_ok=True)
     return r.returncode == 0 and Path(out_mp4).is_file()
+
+
+def viz_preview(audio, img_path, out_mp4, s):
+    """6-Sekunden-Clip (640 px, mit Ton) – genau wie im fertigen Video, nur kleiner."""
+    total = audio['info'].get('duration') or 0
+    start, dur, _, _, _ = timing(s, total)
+    off = start + max(0.0, min(dur * 0.35, dur - 6))
+    s2 = dict(s, start=num(off), end=num(min(off + 6, total or off + 6)), fadeIn=0.3, fadeOut=0.3, transIn='fade', transOut='fade')
+    _, W, H, _ = FORMATS[s['fmt']]
+    k = 640 / max(W, H)
+    still = Path(str(out_mp4) + '.png')
+    r = run(still_command(img_path, still, s2, k), timeout=120)
+    if r.returncode:
+        return False, 'Bild konnte nicht vorbereitet werden'
+    name = Path(str(out_mp4)).name + '.snd.txt'
+    cmd = make_sound_cmds(audio['path'], s2, total, name)
+    args, _ = encode_command(still, audio['path'], out_mp4, s2, total, scale=k, fast=True, cmdfile=cmd)
+    r = run(args, timeout=240) if not cmd else subprocess.run(args, capture_output=True, timeout=240, creationflags=NO_WINDOW,
+                                                              stdin=subprocess.DEVNULL, cwd=str(STAGE))
+    still.unlink(missing_ok=True)
+    if cmd:
+        (STAGE / cmd).unlink(missing_ok=True)
+    if r.returncode or not Path(out_mp4).is_file():
+        return False, r.stderr.decode('utf-8', 'replace')[-500:]
+    return True, ''
 
 
 def output_name(s, audio_name):
@@ -483,9 +502,21 @@ def job_view(j):
         'settings': j['settings']}
 
 
-def encode_pass(j, still, part, s):
+def make_sound_cmds(audio_path, s, audio_dur, name):
+    """Für "Nach Sound": Farbbefehle aus dem Song berechnen (Datei im Arbeitsordner, FFmpeg läuft dort)."""
+    if not (s['viz'] and s['vizMode'] == 'sound'):
+        return None
+    start, dur, _, _, _ = timing(s, audio_dur)
+    text = viz.sound_commands(FFMPEG, audio_path, start, dur, run)
+    if not text:
+        return None
+    (STAGE / name).write_text(text, encoding='ascii')
+    return name
+
+
+def encode_pass(j, still, part, s, cmdfile=None):
     """Ein FFmpeg-Durchlauf mit Fortschritt. Rückgabe (ok, letzte Fehlerzeilen)."""
-    args, meta = encode_command(still, j['audio']['path'], part, s, j['audio']['info'].get('duration'))
+    args, meta = encode_command(still, j['audio']['path'], part, s, j['audio']['info'].get('duration'), cmdfile=cmdfile)
     j['meta'] = meta
     dur = meta['duration'] or 1
     args[1:1] = ['-progress', 'pipe:1', '-nostats']
@@ -493,7 +524,7 @@ def encode_pass(j, still, part, s):
     j['phase'] = 'Video wird encodiert (%s) …' % meta['encoder_name']
     errlog = STAGE / ('err-%s.txt' % j['id'])
     with open(errlog, 'wb') as ef:
-        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=ef, stdin=subprocess.PIPE, creationflags=NO_WINDOW)
+        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=ef, stdin=subprocess.PIPE, creationflags=NO_WINDOW, cwd=str(STAGE))
         j['proc'] = p
         t0 = time.time()
         cur = {}
@@ -548,11 +579,14 @@ def run_job(j):
         part = out.with_name(out.stem + '.part.mp4')
         j['out'] = str(out)
         s = dict(s, enc=resolve_enc(s['enc'], wait=30))
-        ok, tail = encode_pass(j, still, part, s)
+        if s['viz'] and s['vizMode'] == 'sound':
+            j['phase'] = 'Klang wird analysiert …'
+        cmd = make_sound_cmds(j['audio']['path'], s, j['audio']['info'].get('duration'), 'snd-%s.txt' % j['id'])
+        ok, tail = encode_pass(j, still, part, s, cmd)
         if not ok and not j['cancel'] and s['enc'] in GPU_ORDER:
             j['log'].append('Grafikkarte (%s) hat abgebrochen – es geht automatisch mit der CPU weiter.' % ENCODERS[s['enc']][1])
             j['percent'] = 1
-            ok, tail = encode_pass(j, still, part, dict(s, enc='x264'))
+            ok, tail = encode_pass(j, still, part, dict(s, enc='x264'), cmd)
         if j['cancel']:
             part.unlink(missing_ok=True)
             j['state'] = 'abgebrochen'
@@ -630,6 +664,105 @@ def show_in_folder(path):
             os.startfile(str(path if path.exists() else path.parent))  # noqa: S606
     else:
         webbrowser.open(path.parent.as_uri() if path.is_file() else path.as_uri())
+
+
+# ---------- Dateien annehmen ----------
+def stage_file(dest, name, kind, tok):
+    """Prüft eine Datei im Arbeitsordner und nimmt sie als Song oder Bild auf (ValueError bei Problemen)."""
+    dest = Path(dest)
+    try:
+        info = probe(dest)
+    except Exception as e:  # noqa: BLE001
+        dest.unlink(missing_ok=True)
+        raise ValueError('„%s“: %s' % (name, e))
+    fmt = info.get('format', '')
+    is_image = bool(info.get('video')) and not info.get('audio') and (
+        not info.get('duration') or info['duration'] < 1 or fmt.endswith('_pipe') or fmt == 'image2')
+    if kind not in ('audio', 'image'):
+        kind = 'image' if is_image else ('audio' if info.get('audio') else '')
+    if kind == 'audio' and not info.get('audio'):
+        dest.unlink(missing_ok=True)
+        raise ValueError('„%s“ enthält keinen Ton.' % name)
+    if kind == 'image' and not info.get('video'):
+        dest.unlink(missing_ok=True)
+        raise ValueError('„%s“ ist kein Bild.' % name)
+    if not kind:
+        dest.unlink(missing_ok=True)
+        raise ValueError('„%s“ ist weder Audio noch Bild.' % name)
+    entry = {'path': str(dest), 'name': name, 'kind': kind, 'info': info, 'size': dest.stat().st_size}
+    if kind == 'image':
+        pv = STAGE / ('%s-thumb.jpg' % tok)
+        r = run([FFMPEG, '-hide_banner', '-v', 'error', '-y', '-i', str(dest), '-frames:v', '1', '-vf',
+                 'scale=640:640:force_original_aspect_ratio=decrease', '-q:v', '3', str(pv)], timeout=60)
+        if r.returncode == 0 and pv.is_file():
+            entry['preview'] = str(pv)
+    STAGED[tok] = entry
+    return entry
+
+
+def public_entry(tok, e):
+    return {'token': tok, 'name': e['name'], 'kind': e['kind'], 'info': e['info'], 'size': e['size']}
+
+
+# ---------- Vorlagen & Projekte ----------
+PROJ_EXT = '.fesproj'
+
+
+def project_dir():
+    return Path(load_config().get('outdir') or default_outdir()) / 'Projekte'
+
+
+def list_projects():
+    d = project_dir()
+    out = []
+    if d.is_dir():
+        for f in sorted(d.glob('*' + PROJ_EXT), key=lambda p: p.stat().st_mtime, reverse=True):
+            out.append({'name': f.stem, 'path': str(f), 'size': f.stat().st_size, 'mtime': f.stat().st_mtime})
+    return out
+
+
+def save_project(name, settings, audio_tok, image_tok):
+    a, i = STAGED.get(audio_tok or ''), STAGED.get(image_tok or '')
+    if not a or not i:
+        raise ValueError('Für ein Projekt müssen Song und Bild geladen sein.')
+    d = project_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / (safe_name(name) + PROJ_EXT)
+    meta = {'app': APP_NAME, 'version': VERSION, 'settings': clean_settings(settings),
+            'audio': {'name': a['name'], 'file': 'song' + Path(a['path']).suffix},
+            'image': {'name': i['name'], 'file': 'bild' + Path(i['path']).suffix}, 'saved': time.time()}
+    tmp = path.with_suffix('.tmp')
+    with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_STORED) as z:
+        z.writestr('projekt.json', json.dumps(meta, ensure_ascii=False, indent=1))
+        z.write(a['path'], meta['audio']['file'])
+        z.write(i['path'], meta['image']['file'])
+    tmp.replace(path)
+    return path
+
+
+def open_project(path):
+    """Projektdatei entpacken: Einstellungen + Song + Bild werden wie hineingezogen geladen."""
+    try:
+        z = zipfile.ZipFile(path)
+    except (OSError, zipfile.BadZipFile):
+        raise ValueError('Das ist keine gültige Projektdatei.')
+    with z:
+        try:
+            meta = json.loads(z.read('projekt.json').decode('utf-8'))
+        except (KeyError, ValueError):
+            raise ValueError('In der Projektdatei fehlen die Einstellungen.')
+        out = {'settings': clean_settings(meta.get('settings')), 'name': Path(path).stem}
+        for kind in ('audio', 'image'):
+            ent = meta.get(kind) or {}
+            fn = ent.get('file', '')
+            if fn not in z.namelist() or '/' in fn or '\\' in fn:
+                raise ValueError('In der Projektdatei fehlt %s.' % ('der Song' if kind == 'audio' else 'das Bild'))
+            tok = secrets.token_hex(8)
+            dest = STAGE / (tok + Path(fn).suffix.lower()[:8])
+            with z.open(fn) as src, open(dest, 'wb') as dst:
+                shutil.copyfileobj(src, dst)
+            out[kind] = public_entry(tok, stage_file(dest, safe_name(ent.get('name') or fn), kind, tok))
+    return out
 
 
 # ---------- lokaler Webserver für die Oberfläche ----------
@@ -717,9 +850,15 @@ class Handler(BaseHTTPRequestHandler):
                 'ffmpeg_path': FFMPEG or '', 'encoders': {k: {'name': v[1], 'ok': HW[k]} for k, v in ENCODERS.items()},
                 'hw_done': HW_DONE.is_set(), 'auto_enc': resolve_enc('auto'),
                 'transitions': [{'group': g, 'id': i, 'name': n} for g, i, n in TRANSITIONS],
+                'vizStyles': [{'id': i, 'name': n, 'short': k} for i, n, k in viz.STYLES],
+                'presets': conf.get('presets') or [],
                 'formats': {k: {'name': v[0], 'w': v[1], 'h': v[2], 'vertical': v[3]} for k, v in FORMATS.items()},
                 'outdir': conf.get('outdir') or default_outdir(), 'theme': conf.get('theme') or 'gold',
                 'settings': clean_settings(conf.get('settings')), 'intro': conf.get('intro', True)})
+        if path == '/api/projects':
+            return self.send_json(200, {'projects': list_projects(), 'folder': str(project_dir())})
+        if path == '/api/presets':
+            return self.send_json(200, {'presets': load_config().get('presets') or []})
         if path == '/api/ping':
             return self.send_json(200, {'ok': True, 'busy': busy()})
         if path == '/api/jobs':
@@ -787,35 +926,61 @@ class Handler(BaseHTTPRequestHandler):
                         f.write(chunk)
                         left -= len(chunk)
                 try:
-                    info = probe(dest)
-                except Exception as e:  # noqa: BLE001
-                    dest.unlink(missing_ok=True)
-                    return self.send_json(400, {'error': '„%s“: %s' % (name, e)})
-                # Art erkennen: Bild = Videostrom ohne Länge/Ton; Audio = Tonspur
-                fmt = info.get('format', '')
-                is_image = bool(info.get('video')) and not info.get('audio') and (
-                    not info.get('duration') or info['duration'] < 1 or fmt.endswith('_pipe') or fmt == 'image2')
-                if kind not in ('audio', 'image'):
-                    kind = 'image' if is_image else ('audio' if info.get('audio') else '')
-                if kind == 'audio' and not info.get('audio'):
-                    dest.unlink(missing_ok=True)
-                    return self.send_json(400, {'error': '„%s“ enthält keinen Ton.' % name})
-                if kind == 'image' and not info.get('video'):
-                    dest.unlink(missing_ok=True)
-                    return self.send_json(400, {'error': '„%s“ ist kein Bild.' % name})
-                if not kind:
-                    dest.unlink(missing_ok=True)
-                    return self.send_json(400, {'error': '„%s“ ist weder Audio noch Bild.' % name})
-                entry = {'path': str(dest), 'name': name, 'kind': kind, 'info': info, 'size': n}
-                if kind == 'image':
-                    pv = STAGE / ('%s-thumb.jpg' % tok)
-                    r = run([FFMPEG, '-hide_banner', '-v', 'error', '-y', '-i', str(dest), '-frames:v', '1', '-vf',
-                             'scale=640:640:force_original_aspect_ratio=decrease', '-q:v', '3', str(pv)], timeout=60)
-                    if r.returncode == 0 and pv.is_file():
-                        entry['preview'] = str(pv)
-                STAGED[tok] = entry
-                return self.send_json(200, {'token': tok, 'name': name, 'kind': kind, 'info': info, 'size': n})
+                    entry = stage_file(dest, name, kind, tok)
+                except ValueError as e:
+                    return self.send_json(400, {'error': str(e)})
+                return self.send_json(200, public_entry(tok, entry))
+
+            if path == '/api/project/open':
+                n = int(self.headers.get('Content-Length') or 0)
+                if n <= 0 or n > 4 * 1024 ** 3:
+                    return self.send_json(400, {'error': 'Datei ist leer oder zu groß.'})
+                tmp = STAGE / ('upload-%s%s' % (secrets.token_hex(6), PROJ_EXT))
+                with open(tmp, 'wb') as f:
+                    left = n
+                    while left > 0:
+                        chunk = self.rfile.read(min(1 << 20, left))
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        left -= len(chunk)
+                try:
+                    return self.send_json(200, open_project(tmp))
+                finally:
+                    tmp.unlink(missing_ok=True)
             data = self.body_json()
+            if path == '/api/presets/save':
+                raw_name = str(data.get('name') or '').strip()
+                name = safe_name(raw_name)[:60] if raw_name else ''
+                if not name:
+                    return self.send_json(400, {'error': 'Bitte einen Namen eingeben.'})
+                conf = load_config()
+                lst = [p for p in (conf.get('presets') or []) if p.get('name') != name]
+                lst.append({'name': name, 'settings': clean_settings(data.get('settings')), 'saved': time.time()})
+                conf['presets'] = lst[-60:]
+                save_config(conf)
+                return self.send_json(200, {'presets': conf['presets']})
+            if path == '/api/presets/delete':
+                conf = load_config()
+                conf['presets'] = [p for p in (conf.get('presets') or []) if p.get('name') != data.get('name')]
+                save_config(conf)
+                return self.send_json(200, {'presets': conf['presets']})
+            if path == '/api/project/save':
+                name = str(data.get('name') or '').strip()
+                if not name:
+                    return self.send_json(400, {'error': 'Bitte einen Namen eingeben.'})
+                pth = save_project(name, data.get('settings'), data.get('audio'), data.get('image'))
+                return self.send_json(200, {'path': str(pth), 'projects': list_projects()})
+            if path == '/api/project/load':
+                pth = Path(str(data.get('path') or ''))
+                if pth.parent.resolve() != project_dir().resolve() or pth.suffix != PROJ_EXT or not pth.is_file():
+                    return self.send_json(400, {'error': 'Projekt nicht gefunden.'})
+                return self.send_json(200, open_project(pth))
+            if path == '/api/project/delete':
+                pth = Path(str(data.get('path') or ''))
+                if pth.parent.resolve() == project_dir().resolve() and pth.suffix == PROJ_EXT and pth.is_file():
+                    pth.unlink()
+                return self.send_json(200, {'projects': list_projects()})
             if path == '/api/command':
                 s = clean_settings(data.get('settings'))
                 a = STAGED.get(data.get('audio') or '')
@@ -850,6 +1015,19 @@ class Handler(BaseHTTPRequestHandler):
                     old.unlink(missing_ok=True)
                 if not transition_preview(i['path'], STAGE / ('clip-%s.mp4' % key), s, 'out' if data.get('which') == 'out' else 'in'):
                     return self.send_json(500, {'error': 'Vorschau fehlgeschlagen'})
+                return self.send_json(200, {'url': '/api/clip/' + key})
+            if path == '/api/viz-preview':
+                s = clean_settings(data.get('settings'))
+                s['viz'] = True
+                a, i = STAGED.get(data.get('audio') or ''), STAGED.get(data.get('image') or '')
+                if not a or not i:
+                    return self.send_json(400, {'error': 'Für die Vorschau zuerst Song und Bild hineinziehen'})
+                key = secrets.token_hex(6)
+                for old in STAGE.glob('clip-*.mp4'):
+                    old.unlink(missing_ok=True)
+                ok, err = viz_preview(a, i['path'], STAGE / ('clip-%s.mp4' % key), s)
+                if not ok:
+                    return self.send_json(500, {'error': 'Vorschau fehlgeschlagen: ' + err})
                 return self.send_json(200, {'url': '/api/clip/' + key})
             if path == '/api/quit':
                 stop_all()
