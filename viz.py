@@ -109,6 +109,39 @@ def even(v):
 def sound_commands(ffmpeg, audio, start, dur, run, step=0.1):
     """Liest den Song (mono, 11 kHz) und erzeugt sendcmd-Befehle: Farbton nach Klanghelligkeit
     (Nulldurchgänge ≈ hohe/tiefe Töne), Helligkeit nach Lautstärke."""
+    rms, zcr = analyse(ffmpeg, audio, start, dur, run, step)
+    if not rms:
+        return ''
+    return _sound_text(rms, zcr, step)
+
+
+def loudness(ffmpeg, audio, start, dur, run, step=0.1):
+    """Lautstärke-Hüllkurve 0..1 (schnell hoch, langsam runter) – für „Effekte im Takt“."""
+    rms, _ = analyse(ffmpeg, audio, start, dur, run, step)
+    if not rms:
+        return []
+    top = sorted(rms)[int(len(rms) * 0.95)] or 1
+    out, lv = [], 0.0
+    for a in rms:
+        level = min(1.0, a / top)
+        lv = level if level > lv else lv * 0.8 + level * 0.2
+        out.append(lv)
+    return out
+
+
+_ANALYSE = {}
+
+
+def analyse(ffmpeg, audio, start, dur, run, step=0.1):
+    key = (str(audio), round(start, 3), round(dur, 3), step)
+    if key not in _ANALYSE:
+        if len(_ANALYSE) > 8:
+            _ANALYSE.clear()
+        _ANALYSE[key] = _analyse(ffmpeg, audio, start, dur, run, step)
+    return _ANALYSE[key]
+
+
+def _analyse(ffmpeg, audio, start, dur, run, step=0.1):
     rate = 11025
     args = [ffmpeg, '-v', 'error']
     if start > 0:
@@ -133,8 +166,10 @@ def sound_commands(ffmpeg, audio, start, dur, run, step=0.1):
             prev = v
         rms.append(math.sqrt(acc / len(blk)) / 32768)
         zcr.append(z / len(blk))
-    if not rms:
-        return ''
+    return rms, zcr
+
+
+def _sound_text(rms, zcr, step):
     top = sorted(rms)[int(len(rms) * 0.95)] or 1
     zs = sorted(zcr)
     zlo, zhi = zs[int(len(zs) * 0.05)], zs[int(len(zs) * 0.95)] or 1

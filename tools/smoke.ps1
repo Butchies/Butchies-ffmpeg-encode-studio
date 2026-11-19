@@ -101,5 +101,36 @@ foreach ($c in $marks) {
   "[Markierung $($c.name)] Status: $($j.state) – $($j.out)" | Tee-Object -FilePath $Out -Append
   if ($j.state -ne 'fertig') { $j.error | Tee-Object -FilePath $Out -Append; throw "Video mit Markierung $($c.name) fehlgeschlagen" }
 }
+# ---- 1.3.0: Bild-Effekte, Kamera, Grafikkarte ----
+$info = Invoke-RestMethod "$base/api/info" -Headers $h
+"Grafikkarte: $($info.gpu.text) | KI-Video: $($info.gpu.video_ai) – $($info.gpu.video_text)" | Tee-Object -FilePath $Out -Append
+"Effekte: $($info.fx.effects.Count) · Kameras: $($info.fx.cams.Count) · Tiefen-KI: $($info.fx.depth)" | Tee-Object -FilePath $Out -Append
+if ($info.fx.effects.Count -ne 10) { throw 'Effekt-Liste unvollständig' }
+if (-not $info.fx.depth) { throw 'Tiefen-KI (Depth Anything) nicht mitgeliefert' }
+& $ff -v error -y -f lavfi -i "color=c=0x23304a:s=1600x900,drawbox=x=0:y=600:w=1600:h=300:color=0x3a2a20:t=fill,drawbox=x=700:y=380:w=180:h=400:color=0x151515:t=fill" -frames:v 1 "$work\landschaft.png"
+$l = Stage "$work\landschaft.png" 'image'
+$fxcases = @(
+  @{ name = 'Schnee + 3D-Kamerafahrt'; s = @{ fx = 'snow'; cam = 'depth'; fxBeat = $true } },
+  @{ name = 'Funken + Zoom + Visualizer'; s = @{ fx = 'sparks'; cam = 'zoom'; viz = $true; vizMode = 'sound' } },
+  @{ name = 'Lichtlinien entlang Ring'; s = @{ fx = 'streaks'; fxArea = 'path'; fxClosed = $true; fxPath = $ring } },
+  @{ name = 'Fließen in Fläche + Schwenk'; s = @{ fx = 'flow'; fxArea = 'mask'; fxMask = $mk.token; fxX = $mk.bbox[0]; fxY = $mk.bbox[1]; fxW = $mk.bbox[2]; fxH = $mk.bbox[3]; cam = 'pan' } },
+  @{ name = 'Nebel 4K'; s = @{ fx = 'fog'; fmt = 'yt4k' } }
+)
+foreach ($c in $fxcases) {
+  $st = @{ fmt = 'yt1080'; fps = 25; fit = 'contain'; end = '0:06' }
+  foreach ($k in $c.s.Keys) { $st[$k] = $c.s[$k] }
+  $body = @{ audio = $a; image = $l; outdir = $outdir; settings = $st } | ConvertTo-Json -Depth 6
+  $job = Invoke-RestMethod -Method Post -Uri "$base/api/encode" -Headers $h -Body $body -ContentType 'application/json'
+  $t0 = Get-Date
+  for ($i = 0; $i -lt 400; $i++) {
+    Start-Sleep -Seconds 1
+    $j = Invoke-RestMethod "$base/api/job/$($job.id)" -Headers $h
+    if (@('fertig', 'fehler', 'abgebrochen') -contains $j.state) { break }
+  }
+  $sec = [math]::Round(((Get-Date) - $t0).TotalSeconds)
+  "[Effekt $($c.name)] Status: $($j.state) – $sec s – $($j.meta.notes -join ' ')" | Tee-Object -FilePath $Out -Append
+  if ($j.state -ne 'fertig') { $j.error | Tee-Object -FilePath $Out -Append; throw "Video mit Effekt $($c.name) fehlgeschlagen" }
+  if (($j.meta.notes -join ' ') -match 'einfache Tiefensch') { throw 'Tiefen-KI lief nicht (einfache Schätzung benutzt)' }
+}
 Stop-Process -Id $p.Id -Force
 'SMOKE OK' | Tee-Object -FilePath $Out -Append

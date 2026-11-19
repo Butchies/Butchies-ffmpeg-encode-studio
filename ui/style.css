@@ -512,3 +512,35 @@ html,body{height:100%}
 
 #markBar .seg button,#markBar .btn{white-space:nowrap}
 #markBar .seg button{padding-inline:12px}
+
+/* ---------- 1.3.0: Bild-Effekte & Kamera, KI-Video ---------- */
+.fxcanvas{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;mix-blend-mode:screen}
+.frame img{transition:transform .25s linear;transform-origin:50% 50%}
+.fx-tiles{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:6px}
+.fxtile{display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px 4px 7px;border-radius:10px;border:1px solid var(--line);background:transparent;min-width:0}
+.fxtile:hover{border-color:color-mix(in srgb,var(--a) 60%,transparent)}
+.fxtile[aria-pressed=true]{border-color:var(--a);background:color-mix(in srgb,var(--a) 14%,transparent)}
+.fxtile .fx-ic svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:block}
+.fxtile[aria-pressed=true] .fx-ic svg{stroke:var(--a)}
+.fxtile span:last-child{font-size:10.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.fxcard #fxDesc{margin:8px 0 12px}
+.fx-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;align-items:start}
+.fx-cols.off{opacity:.4;pointer-events:none}
+.fx-cols .field>.sub{display:block;margin-top:10px;font-size:12px;font-weight:700;color:var(--muted)}
+.fx-cols .tg{min-height:44px;margin-top:6px}
+.fx-cols #fxWhere button{white-space:nowrap}
+.cam-box{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;align-items:start;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.cam-box #camSeg{flex-wrap:wrap}
+.cam-box #camSeg button{white-space:nowrap}
+.sliders.two{gap:8px}
+.soon{position:relative;overflow:hidden}
+.soon::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0 14px,color-mix(in srgb,var(--a) 5%,transparent) 14px 28px);pointer-events:none}
+.soon p{font-size:13px;line-height:1.5;color:var(--muted);margin:6px 0 10px}
+.soon-chip{color:var(--on);background:linear-gradient(110deg,var(--a),var(--b))}
+.soon-gpu{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;line-height:1.45;margin-bottom:12px}
+.soon-gpu .dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:4px;background:var(--muted)}
+.soon-gpu[data-lvl=gut] .dot,.soon-gpu[data-lvl=ok] .dot{background:#3ddc84}
+.soon-gpu[data-lvl=knapp] .dot{background:#ffb02e}
+.soon-gpu[data-lvl=nein] .dot{background:#ff5a5a}
+.mk-target button{white-space:nowrap}
+@media(max-width:1500px){.fx-tiles{grid-template-columns:repeat(5,minmax(0,1fr))}}

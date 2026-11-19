@@ -9,13 +9,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import viz
+import fx
 try:
     import mark          # braucht numpy + OpenCV (+ onnxruntime für die KI)
 except Exception:  # noqa: BLE001
     mark = None
 
 APP_NAME = 'ffmpeg_encode Studio'
-VERSION = '1.2.0'
+VERSION = '1.3.0'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -33,6 +34,8 @@ SEGS = {}          # id -> KI-Ergebnis (PNG)
 ANALYSIS = {}      # (bild, format, fit) -> Analysebild (max. 1024 px)
 MODEL_DIR = next((d for d in (APP_DIR / 'models', BASE / 'models', Path(__file__).resolve().parent / 'models') if d.is_dir()), APP_DIR / 'models')
 SAM = mark.Sam(MODEL_DIR) if mark and mark.cv2 is not None else None
+DEPTH = fx.Depth(MODEL_DIR) if fx.cv2 is not None else None
+GPU = []           # erkannte Grafikkarten [{name, vram, vendor}]
 
 # Zielformate (Breite, Höhe, Hochformat?)
 FORMATS = {
@@ -80,6 +83,7 @@ DEFAULTS = {'fmt': 'yt4k', 'fps': 30, 'fadeIn': 2.0, 'fadeOut': 3.0, 'color': 'b
             'enc': 'auto', 'quality': '18', 'start': '0:00', 'end': '',
             'transIn': 'fade', 'transOut': 'fade'}
 DEFAULTS.update(viz.DEFAULTS)
+DEFAULTS.update(fx.DEFAULTS)
 
 STAGED = {}        # token -> {'path', 'name', 'kind', 'info'}
 JOBS = {}          # id -> job dict
@@ -272,6 +276,16 @@ def clean_settings(s):
         out['quality'] = '18'
     out['quality'] = str(out['quality'])
     viz.clean(s, out)
+    fx.clean(s, out)
+    # Markierungen aus einer früheren Sitzung (Maske nicht mehr vorhanden) zurücksetzen
+    if out.get('vizMask') and out['vizMask'] not in MASKS:
+        out['vizMask'] = ''
+        if out.get('vizShape') == 'mask':
+            out['vizShape'] = 'box'
+    if out.get('fxMask') and out['fxMask'] not in MASKS:
+        out['fxMask'] = ''
+        if out.get('fxArea') == 'mask':
+            out['fxArea'] = 'full'
     return out
 
 
@@ -368,6 +382,7 @@ def prepare_mark(s, W, H, dur, workdir=None, tag='x'):
 
 
 def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fast=False, cmdfile=None, mark_dir=None, tag='x'):
+    fx_notes = []
     s = dict(s, enc='x264' if fast else resolve_enc(s['enc']))
     name, w, h, vertical = FORMATS[s['fmt']]
     w, h = int(w * scale) // 2 * 2, int(h * scale) // 2 * 2
@@ -384,15 +399,21 @@ def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fas
     afx.append('aresample=48000')
     # Bild nur EINMAL dekodieren und im Speicher wiederholen (schneller als -loop 1)
     vid = '[0:v]format=yuv420p,loop=loop=-1:size=1:start=0,fps=%d,setpts=N/%d/TB' % (fps, fps)
+    extra_in, extra = prepare_mark(s, w, h, dur, mark_dir, tag) if s['viz'] else ([], {})
+    fx_in = []
+    if fx.active(s) and do_v:
+        fx_in, fxinfo = fx.prepare(s, w, h, fps, dur, mark_dir, tag, still_png, 2 + len(extra_in), MASKS, DEPTH, mark)
+        fparts, vid = fx.graph(s, w, h, fps, dur, fxinfo, vid, cmdfile)
+        parts.extend(fparts)
+        if fxinfo.get('depth_method') == 'einfach':
+            fx_notes.append('3D-Kamerafahrt: Das KI-Tiefenmodell fehlt – es wurde eine einfache Tiefenschätzung benutzt.')
     if s['viz']:
         parts.append('[1:a]%s,asplit=2[aout][av]' % ','.join(afx))
-        extra_in, extra = prepare_mark(s, w, h, dur, mark_dir, tag)
         vparts, ox, oy = viz.graph(s, w, h, fps, dur, cmdfile, extra)
         parts.extend(vparts)
         parts.append('%s[base];[base][wv]overlay=%d:%d:shortest=0:eof_action=pass,format=yuv420p' % (vid, ox, oy))
         vchain = parts.pop()
     else:
-        extra_in = []
         parts.append('[1:a]%s[aout]' % ','.join(afx))
         vchain = vid
     parts.extend(transition_graph(vchain, w, h, fps, dur, fi if do_v else 0, fo if do_v else 0,
@@ -414,7 +435,7 @@ def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fas
         venc = ['-c:v', 'h264_amf', '-quality', 'quality', '-rc', 'cqp', '-qp_i', str(q + 2), '-qp_p', str(q + 4)]
     else:
         venc = ['-c:v', 'libx264', '-preset', 'ultrafast' if fast else preset, '-crf', str(26 if fast else q), '-profile:v', 'high']
-        if not s['viz']:
+        if not s['viz'] and not fx.active(s):
             venc += ['-tune', 'stillimage']
     venc += ['-g', str(gop), '-bf', '2', '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']
     if s['enc'] == 'x264':
@@ -424,13 +445,12 @@ def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fas
     if start > 0:
         args += ['-ss', num(start)]
     args += ['-t', num(dur), '-i', str(audio_path)]
-    if s['viz']:
-        for f in extra_in:
-            args += ['-i', str(f)]
+    for f in extra_in + fx_in:
+        args += ['-i', str(f)]
     args += ['-filter_complex', graph, '-map', '[v]', '-map', '[aout]']
     args += venc + ['-r', str(fps), '-c:a', 'aac', '-b:a', '384k', '-ac', '2', '-t', num(dur), '-movflags', '+faststart',
                     '-metadata', 'encoder=%s %s' % (APP_NAME, VERSION), str(out_path)]
-    return args, {'encoder': s['enc'], 'encoder_name': ENCODERS[s['enc']][1], 'start': start, 'duration': dur, 'fadeIn': fi, 'fadeOut': fo, 'notes': notes, 'width': w, 'height': h,
+    return args, {'encoder': s['enc'], 'encoder_name': ENCODERS[s['enc']][1], 'start': start, 'duration': dur, 'fadeIn': fi, 'fadeOut': fo, 'notes': notes + fx_notes, 'width': w, 'height': h,
                   'format': name, 'vertical': vertical}
 
 
@@ -441,7 +461,7 @@ def quote(a):
 
 def command_text(s, audio_name, image_name, out_name, audio_dur):
     args, meta = encode_command('bild.png', audio_name or 'song.mp3', out_name or 'video.mp4', s, audio_dur,
-                                cmdfile='klang.txt' if s['viz'] and s['vizMode'] == 'sound' else None)
+                                cmdfile='klang.txt' if needs_sound(s) else None)
     args[0] = 'ffmpeg'
     pre = 'ffmpeg -i %s -filter_complex "%s" -frames:v 1 bild.png' % (quote(image_name or 'bild.jpg'), fit_filter(s['fit'], meta['width'], meta['height']))
     return pre + '\n\n' + ' '.join(quote(a) for a in args), meta
@@ -543,12 +563,21 @@ def job_view(j):
         'settings': j['settings']}
 
 
+def needs_sound(s):
+    return (s['viz'] and s['vizMode'] == 'sound') or (s['fx'] not in ('none', 'flow') and s['fxBeat'])
+
+
 def make_sound_cmds(audio_path, s, audio_dur, name):
-    """Für "Nach Sound": Farbbefehle aus dem Song berechnen (Datei im Arbeitsordner, FFmpeg läuft dort)."""
-    if not (s['viz'] and s['vizMode'] == 'sound'):
+    """„Nach Sound“ (Visualizer) und „Im Takt“ (Effekte): Befehle aus dem Song berechnen
+    (eine gemeinsame sendcmd-Datei im Arbeitsordner, FFmpeg läuft dort)."""
+    if not needs_sound(s):
         return None
     start, dur, _, _, _ = timing(s, audio_dur)
-    text = viz.sound_commands(FFMPEG, audio_path, start, dur, run)
+    text = ''
+    if s['viz'] and s['vizMode'] == 'sound':
+        text += viz.sound_commands(FFMPEG, audio_path, start, dur, run)
+    if s['fx'] not in ('none', 'flow') and s['fxBeat']:
+        text += fx.beat_commands(viz.loudness(FFMPEG, audio_path, start, dur, run))
     if not text:
         return None
     (STAGE / name).write_text(text, encoding='ascii')
@@ -621,8 +650,11 @@ def run_job(j):
         part = out.with_name(out.stem + '.part.mp4')
         j['out'] = str(out)
         s = dict(s, enc=resolve_enc(s['enc'], wait=30))
-        if s['viz'] and s['vizMode'] == 'sound':
+        if needs_sound(s):
             j['phase'] = 'Klang wird analysiert …'
+        if fx.active(s):
+            j['log'].append('Effekte: %s%s' % (dict((e[0], e[1]) for e in fx.EFFECTS)[s['fx']],
+                                                '' if s['cam'] == 'none' else ' · Kamera: ' + dict((c[0], c[1]) for c in fx.CAMS)[s['cam']]))
         cmd = make_sound_cmds(j['audio']['path'], s, j['audio']['info'].get('duration'), 'snd-%s.txt' % j['id'])
         ok, tail = encode_pass(j, still, part, s, cmd)
         if not ok and not j['cancel'] and s['enc'] in GPU_ORDER:
@@ -765,12 +797,89 @@ def analysis_image(image_tok, s):
     return str(out), key
 
 
+def detect_gpus():
+    """Grafikkarten mit Name + Grafikspeicher (Windows: Treiber-Registry, NVIDIA genauer über nvidia-smi)."""
+    found = []
+    if os.name == 'nt':
+        try:
+            import winreg
+            root = r'SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, root) as k:
+                for i in range(64):
+                    try:
+                        sub = winreg.EnumKey(k, i)
+                    except OSError:
+                        break
+                    if not sub.isdigit():
+                        continue
+                    try:
+                        with winreg.OpenKey(k, sub) as d:
+                            name = str(winreg.QueryValueEx(d, 'DriverDesc')[0])
+                            mem = 0
+                            for val in ('HardwareInformation.qwMemorySize', 'HardwareInformation.MemorySize'):
+                                try:
+                                    v = winreg.QueryValueEx(d, val)[0]
+                                    v = int.from_bytes(v[:8], 'little') if isinstance(v, (bytes, bytearray)) else int(v)
+                                    if v > mem:
+                                        mem = v
+                                except OSError:
+                                    pass
+                    except OSError:
+                        continue
+                    if re.search(r'basic display|basic render|remote|virtual|parsec|dameware|citrix', name, re.I):
+                        continue
+                    found.append({'name': name, 'vram': round(mem / 1024 ** 3, 1)})
+        except Exception:  # noqa: BLE001
+            pass
+    smi = shutil.which('nvidia-smi') or (r'C:\Windows\System32\nvidia-smi.exe' if os.name == 'nt' else None)
+    if smi and Path(smi).is_file():
+        try:
+            r = run([smi, '--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], timeout=10)
+            for line in r.stdout.decode('utf-8', 'replace').splitlines():
+                parts = [x.strip() for x in line.split(',')]
+                if len(parts) == 2 and parts[1].isdigit():
+                    vram = round(int(parts[1]) / 1024, 1)
+                    for g in found:
+                        if parts[0].lower() in g['name'].lower() or g['name'].lower() in parts[0].lower():
+                            g['vram'] = vram
+                            break
+                    else:
+                        found.append({'name': parts[0], 'vram': vram})
+        except Exception:  # noqa: BLE001
+            pass
+    for g in found:
+        n = g['name'].lower()
+        g['vendor'] = 'nvidia' if ('nvidia' in n or 'geforce' in n or 'rtx' in n) else 'amd' if ('amd' in n or 'radeon' in n) else \
+            'intel' if 'intel' in n else 'andere'
+    found.sort(key=lambda g: -g['vram'])
+    GPU[:] = found
+
+
+def gpu_view():
+    """Anzeige + Einschätzung für das (spätere) KI-Video."""
+    if not GPU:
+        return {'cards': [], 'text': 'Grafikkarte: nicht erkannt', 'video_ai': 'unbekannt',
+                'video_text': 'Die Grafikkarte konnte nicht erkannt werden.'}
+    g = GPU[0]
+    mem = ('%s GB' % ('%g' % g['vram']).replace('.', ',')) if g['vram'] else 'Speicher unbekannt'
+    if g['vendor'] == 'nvidia' and g['vram'] >= 16:
+        lvl, txt = 'gut', 'Deine Grafikkarte reicht für KI-Videos gut aus.'
+    elif g['vendor'] == 'nvidia' and g['vram'] >= 12:
+        lvl, txt = 'ok', 'Deine Grafikkarte reicht für kurze KI-Clips (kleines Modell).'
+    elif g['vendor'] == 'nvidia' and g['vram'] >= 8:
+        lvl, txt = 'knapp', 'Mit %s wird es knapp – nur sehr kleine, kurze Clips wären möglich.' % mem
+    else:
+        lvl, txt = 'nein', 'Für KI-Videos braucht es eine NVIDIA-Grafikkarte mit mindestens 12 GB – deine reicht dafür leider nicht.'
+    return {'cards': GPU, 'text': 'Grafikkarte: %s · %s' % (g['name'], mem), 'video_ai': lvl, 'video_text': txt}
+
+
 def ai_info():
     if not mark or mark.cv2 is None:
         return {'tools': False, 'model': False, 'text': 'KI-Helfer nicht verfügbar (OpenCV fehlt)'}
     model = bool(SAM and SAM.available())
     return {'tools': True, 'model': model,
-            'text': 'KI-Auswahl: MobileSAM (offline)' if model else 'KI-Auswahl: einfache Erkennung (KI-Modell nicht gefunden)'}
+            'text': 'KI-Auswahl: MobileSAM (offline)' if model else 'KI-Auswahl: einfache Erkennung (KI-Modell nicht gefunden)',
+            'depth': bool(DEPTH and DEPTH.available())}
 
 
 # ---------- Vorlagen & Projekte ----------
@@ -808,6 +917,9 @@ def save_project(name, settings, audio_tok, image_tok):
         mp = MASKS.get(meta['settings'].get('vizMask') or '')
         if meta['settings'].get('vizShape') == 'mask' and mp and Path(mp).is_file():
             z.write(mp, 'maske.png')
+        mp = MASKS.get(meta['settings'].get('fxMask') or '')
+        if meta['settings'].get('fxArea') == 'mask' and mp and Path(mp).is_file():
+            z.write(mp, 'effekt-maske.png')
     tmp.replace(path)
     return path
 
@@ -824,14 +936,15 @@ def open_project(path):
         except (KeyError, ValueError):
             raise ValueError('In der Projektdatei fehlen die Einstellungen.')
         out = {'settings': clean_settings(meta.get('settings')), 'name': Path(path).stem}
-        if 'maske.png' in z.namelist():
-            tok = secrets.token_hex(8)
-            dest = STAGE / ('mask-%s.png' % tok)
-            with z.open('maske.png') as src, open(dest, 'wb') as dst:
-                shutil.copyfileobj(src, dst)
-            MASKS[tok] = str(dest)
-            out['settings']['vizMask'] = tok
-            out['settings'] = clean_settings(out['settings'])
+        for fn, key in (('maske.png', 'vizMask'), ('effekt-maske.png', 'fxMask')):
+            if fn in z.namelist():
+                tok = secrets.token_hex(8)
+                dest = STAGE / ('mask-%s.png' % tok)
+                with z.open(fn) as src, open(dest, 'wb') as dst:
+                    shutil.copyfileobj(src, dst)
+                MASKS[tok] = str(dest)
+                out['settings'][key] = tok
+        out['settings'] = clean_settings(out['settings'])
         for kind in ('audio', 'image'):
             ent = meta.get(kind) or {}
             fn = ent.get('file', '')
@@ -931,7 +1044,10 @@ class Handler(BaseHTTPRequestHandler):
                 'hw_done': HW_DONE.is_set(), 'auto_enc': resolve_enc('auto'),
                 'transitions': [{'group': g, 'id': i, 'name': n} for g, i, n in TRANSITIONS],
                 'vizStyles': [{'id': i, 'name': n, 'short': k} for i, n, k in viz.STYLES],
-                'presets': conf.get('presets') or [], 'ai': ai_info(),
+                'presets': conf.get('presets') or [], 'ai': ai_info(), 'gpu': gpu_view(),
+                'fx': {'effects': [{'id': i, 'name': n, 'short': k, 'desc': d} for i, n, k, d in fx.EFFECTS],
+                       'cams': [{'id': i, 'name': n, 'desc': d} for i, n, d in fx.CAMS],
+                       'tools': fx.cv2 is not None, 'depth': bool(DEPTH and DEPTH.available())},
                 'formats': {k: {'name': v[0], 'w': v[1], 'h': v[2], 'vertical': v[3]} for k, v in FORMATS.items()},
                 'outdir': conf.get('outdir') or default_outdir(), 'theme': conf.get('theme') or 'gold',
                 'settings': clean_settings(conf.get('settings')), 'intro': conf.get('intro', True)})
@@ -1083,7 +1199,8 @@ class Handler(BaseHTTPRequestHandler):
                 conf = load_config()
                 lst = [p for p in (conf.get('presets') or []) if p.get('name') != name]
                 ps = clean_settings(data.get('settings'))
-                ps.update({k: viz.DEFAULTS[k] for k in viz.MARK_KEYS})       # Markierung gehört nur zum Video, nicht zur Vorlage
+                ps.update({k: viz.DEFAULTS[k] for k in viz.MARK_KEYS})
+                ps.update({k: fx.DEFAULTS[k] for k in fx.MARK_KEYS})       # Markierung gehört nur zum Video, nicht zur Vorlage
                 lst.append({'name': name, 'settings': ps, 'saved': time.time()})
                 conf['presets'] = lst[-60:]
                 save_config(conf)
@@ -1146,7 +1263,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {'url': '/api/clip/' + key})
             if path == '/api/viz-preview':
                 s = clean_settings(data.get('settings'))
-                s['viz'] = True
+                if not s['viz'] and not fx.active(s):
+                    s['viz'] = True
                 a, i = STAGED.get(data.get('audio') or ''), STAGED.get(data.get('image') or '')
                 if not a or not i:
                     return self.send_json(400, {'error': 'Für die Vorschau zuerst Song und Bild hineinziehen'})
@@ -1463,6 +1581,7 @@ def native_window(url):
 def main():
     HOME.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=hw_check, daemon=True).start()
+    threading.Thread(target=detect_gpus, daemon=True).start()
     threading.Thread(target=worker, daemon=True).start()
     server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
     server.daemon_threads = True

@@ -35,14 +35,20 @@ jobs:
             --collect-all onnxruntime --collect-submodules cv2 ffmpeg_encode_studio.py 2>&1 | Tee-Object -FilePath build.log -Append
           if (!(Test-Path dist\ffmpeg_encode_Studio\ffmpeg_encode_Studio.exe)) { exit 1 }
 
-      - name: KI-Modell holen (MobileSAM, MIT-Lizenz, offline nutzbar)
+      - name: KI-Modelle holen (MobileSAM + Depth Anything V2, offline nutzbar)
         run: |
           New-Item -ItemType Directory -Force dist\ffmpeg_encode_Studio\models | Out-Null
           foreach ($f in 'mobile_sam_image_encoder.onnx', 'sam_mask_decoder_single.onnx') {
             Invoke-WebRequest -UseBasicParsing "https://huggingface.co/Acly/MobileSAM/resolve/main/$f" -OutFile "dist\ffmpeg_encode_Studio\models\$f"
             "$f : $((Get-Item dist\ffmpeg_encode_Studio\models\$f).Length) Bytes" | Tee-Object -FilePath model.log -Append
           }
-          "MobileSAM (https://github.com/ChaoningZhang/MobileSAM), ONNX-Export: https://huggingface.co/Acly/MobileSAM - MIT-Lizenz" | Out-File -Encoding utf8 dist\ffmpeg_encode_Studio\models\LIZENZ.txt
+          # Tiefen-KI für die 3D-Kamerafahrt (Depth Anything V2 Small, Apache-2.0)
+          Invoke-WebRequest -UseBasicParsing "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx" -OutFile "dist\ffmpeg_encode_Studio\models\depth_anything_v2_small.onnx"
+          "depth_anything_v2_small.onnx : $((Get-Item dist\ffmpeg_encode_Studio\models\depth_anything_v2_small.onnx).Length) Bytes" | Tee-Object -FilePath model.log -Append
+          @(
+            "MobileSAM (https://github.com/ChaoningZhang/MobileSAM), ONNX-Export: https://huggingface.co/Acly/MobileSAM - MIT-Lizenz",
+            "Depth Anything V2 Small (https://github.com/DepthAnything/Depth-Anything-V2), ONNX: https://huggingface.co/onnx-community/depth-anything-v2-small - Apache-2.0"
+          ) | Out-File -Encoding utf8 dist\ffmpeg_encode_Studio\models\LIZENZ.txt
 
       - name: FFmpeg mit allen Codecs holen (x264, x265, AAC, NVENC, Quick Sync, AMF)
         run: |

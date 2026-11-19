@@ -1,4 +1,4 @@
-**ffmpeg_encode Studio 1.2.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
+**ffmpeg_encode Studio 1.3.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
 
 **Installieren:** `ffmpeg_encode_Studio-Setup.exe` herunterladen und starten. Es werden keine Administratorrechte gebraucht.
 FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingerichtet.
@@ -9,6 +9,13 @@ FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingeric
 - Audio-Visualizer (Wellenform/Spektrum) in Design- oder eigener Farbe
 - Grafikkarte automatisch (NVIDIA NVENC, Intel Quick Sync, AMD AMF), sonst CPU – mit automatischem Rückfall
 - Fortschritt in Prozent, Warteschlange, 7 Designs und Start-/Abschieds-Animation der Butchies-Webseite
+
+**Neu in 1.3.0**
+- **Bild-Effekte** (10 Stück): Lichtlinien, Funken, Glitzern, Lichtkreise, Schwebeteilchen, Schnee, Regen, Nebel, Fließen – Farben automatisch aus dem Bild (oder eigene Farbe / Regenbogen), Menge, Tempo, Größe, Deckkraft, Winkel, **Im Takt** der Musik
+- Effekte wirken auf dem ganzen Bild oder nur dort, wo du markierst: **Fläche** malen (auch mit ✨ KI-Auswahl), **Linie** oder **Ring** – Lichtlinien laufen genau an deiner Linie entlang
+- **Kamera-Bewegung**: Sanfter Zoom, Langsamer Schwenk, **3D-Kamerafahrt** (eine KI erkennt Vorder- und Hintergrund – Depth Anything V2, offline)
+- **Grafikkarten-Erkennung**: Name und Grafikspeicher stehen unten in der Statusleiste
+- **KI-Video** (z. B. tanzende Person) als Vorschau-Karte „Demnächst“ – noch ohne Funktion, zeigt schon, ob deine Grafikkarte dafür reichen würde
 
 **Neu in 1.2.0**
 - Visualizer-Platz markieren (gilt nur für dieses Video, wird im Projekt gespeichert): **Fläche** malen (Pinsel, Radierer, Rechteck, Ellipse), **Linie** (Balken stehen entlang einer gezeichneten Linie), **Ring** (Balken rund um ein Motiv)

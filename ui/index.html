@@ -83,6 +83,9 @@
     <div class="chips"><span class="chip" id="resChip">3840 × 2160</span><span class="chip" id="fpsChip">30 fps</span><span class="chip acc" id="kindChip">Video · 16:9</span></div>
    </div>
    <div class="markbar" id="markBar" hidden>
+    <div class="seg mk-target" id="mkTarget" role="group" aria-label="Was markieren?" hidden>
+     <button type="button" data-t="viz">🎵 Visualizer</button><button type="button" data-t="fx">✨ Effekt</button>
+    </div>
     <div class="seg mk-modes" id="mkModes" role="group" aria-label="Wo soll der Visualizer entstehen?">
      <button type="button" data-m="box">Kasten</button><button type="button" data-m="mask">Fläche</button><button type="button" data-m="line">Linie</button><button type="button" data-m="ring">Ring</button>
     </div>
@@ -92,6 +95,7 @@
     <div class="frame" id="frame">
      <img id="stillImg" alt="Vorschau des fertigen Videobilds" hidden>
      <div class="frame-empty" id="frameEmpty"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 8"/></svg><span>Bild hierher ziehen</span></div>
+     <canvas id="fxCanvas" class="fxcanvas" aria-hidden="true"></canvas>
      <canvas id="markCanvas" class="markcanvas" hidden aria-label="Fläche für den Visualizer malen"></canvas>
      <svg id="markSvg" class="marksvg" aria-hidden="true"></svg>
      <div class="sugbox" id="sugBox" hidden></div>
@@ -149,6 +153,49 @@
     <button type="button" class="btn accent" id="vizPreviewBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Vorschau mit Ton (6 s)</button>
     <small>Beim Anhören zeigt die Vorschau die echten Frequenzen deines Songs.</small>
    </div>
+  </div>
+
+  <div class="card fxcard" id="fxCard">
+   <div class="row-between">
+    <h2><span class="n">✨</span> Bild-Effekte &amp; Kamera</h2>
+    <span class="chip" id="fxChip">Aus</span>
+   </div>
+   <div class="fx-tiles" id="fxTiles" role="group" aria-label="Effekt"></div>
+   <p class="mhint" id="fxDesc"></p>
+   <div class="fx-cols" id="fxBody">
+    <div class="field"><span>Wo?</span>
+     <div class="seg" id="fxWhere" role="group" aria-label="Wo wirkt der Effekt?">
+      <button type="button" data-m="box">Ganzes Bild</button><button type="button" data-m="mask">Fläche</button><button type="button" data-m="line">Linie</button><button type="button" data-m="ring">Ring</button>
+     </div>
+     <small class="mhint" id="fxWhereHint">Markieren geht direkt im Vorschaubild oben.</small>
+     <span class="sub">Farbe</span>
+     <div class="modes" id="fxModes" role="group" aria-label="Farbe der Effekte"></div>
+     <label class="cpick" id="fxColorWrap"><input type="color" id="fxColor" aria-label="Effekt-Farbe"><span>Eigene Farbe</span></label>
+     <button type="button" class="tg" id="fxBeat" role="switch" aria-checked="true"><span><b>Im Takt</b><small>Bei lauten Stellen kräftiger</small></span><span class="switch" aria-checked="true"><i></i></span></button>
+    </div>
+    <div class="field"><span>Regler</span><div class="sliders" id="fxSliders"></div></div>
+   </div>
+   <div class="cam-box">
+    <div class="field"><span>Kamera-Bewegung <small>(ganzes Bild)</small></span>
+     <div class="seg" id="camSeg" role="group" aria-label="Kamera-Bewegung"></div>
+     <small class="mhint" id="camHint"></small>
+    </div>
+    <div class="sliders two" id="camSliders"></div>
+   </div>
+   <div class="viz-foot">
+    <button type="button" class="btn accent" id="fxPreviewBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Vorschau mit Ton (6 s)</button>
+    <small>Im Vorschaubild siehst du eine Skizze – die Vorschau zeigt das echte Ergebnis. Effekte machen das Umwandeln etwas langsamer.</small>
+   </div>
+  </div>
+
+  <div class="card soon" id="soonCard">
+   <div class="row-between">
+    <h2><span class="n">🎬</span> KI-Video</h2>
+    <span class="chip soon-chip">Demnächst</span>
+   </div>
+   <p>Aus deinem Bild und einem markierten Bereich echte Bewegung erzeugen – z. B. eine Person, die tanzt, oder Wasser, das wirklich fließt. Das kommt später als freiwilliger Zusatz-Download (ca. 15–20 GB) und braucht eine starke NVIDIA-Grafikkarte.</p>
+   <div class="soon-gpu" id="soonGpu"><span class="dot"></span><span id="soonText">Grafikkarte wird geprüft …</span></div>
+   <button type="button" class="btn" disabled>Noch nicht verfügbar</button>
   </div>
 
   <div class="card">
@@ -229,6 +276,7 @@
  <span class="st"><i class="dot" id="ffDot"></i><span id="ffText">FFmpeg wird gesucht …</span></span>
  <span class="st" id="hwText"></span>
  <span class="st" id="aiText"></span>
+ <span class="st" id="gpuText"></span>
  <span class="st grow"></span>
  <span class="st">Version <b id="verText">–</b></span>
 </footer>

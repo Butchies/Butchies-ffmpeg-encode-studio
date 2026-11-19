@@ -339,9 +339,10 @@ function vizSvg(id, W, H, t, s, mini, gid) {
 let VT = 0, lastFrame = 0, tilesKey = '';
 function vizFrame(ts) {
   requestAnimationFrame(vizFrame);
-  if (!S.settings || !S.settings.viz || document.hidden || ts - lastFrame < 70) return;
+  if (!S.settings || (!S.settings.viz && S.settings.fx === 'none') || document.hidden || ts - lastFrame < 70) return;
   lastFrame = ts; VT += 0.08;
   if (LIVE.an && !aud.paused) { LIVE.an.getByteFrequencyData(LIVE.freq); LIVE.an.getByteTimeDomainData(LIVE.time); LIVE.on = true } else LIVE.on = false;
+  if (!S.settings.viz) return;
   if (S.settings.vizShape === 'path' || MK.mode === 'line' || MK.mode === 'ring') drawMarkSvg(); else drawVizBox();
 }
 requestAnimationFrame(vizFrame);
@@ -354,8 +355,8 @@ function drawVizBox() {
   svg.style.opacity = s.vizAlpha / 100;
   svg.style.filter = glow > 0 ? `drop-shadow(0 0 ${Math.round(glow / 8)}px ${colorAt(s, 0.3, VT)}) drop-shadow(0 0 ${Math.round(glow / 4)}px ${colorAt(s, 0.7, VT)})` : 'none';
   let m = s.vizSoft ? 'linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%)' : 'none', ms = '', mp = '';
-  if (s.vizShape === 'mask' && maskUrl) {
-    m = `url(${maskUrl})`; ms = `${(100 / s.vizW * 100).toFixed(2)}% ${(100 / s.vizH * 100).toFixed(2)}%`;
+  if (s.vizShape === 'mask' && MURL.viz) {
+    m = `url(${MURL.viz})`; ms = `${(100 / s.vizW * 100).toFixed(2)}% ${(100 / s.vizH * 100).toFixed(2)}%`;
     mp = `${s.vizW >= 99.9 ? 0 : (s.vizX / (100 - s.vizW) * 100).toFixed(2)}% ${s.vizH >= 99.9 ? 0 : (s.vizY / (100 - s.vizH) * 100).toFixed(2)}%`;
   }
   svg.style.webkitMaskImage = m; svg.style.maskImage = m;
@@ -533,7 +534,8 @@ function renderPresets() {
     el('i', { style: 'background:' + presetSwatch(p.settings) }), p.name, el('small', {}, presetSub(p.settings)))));
 }
 function applyPreset(p) {
-  const keep = {}; ['vizShape', 'vizMask', 'vizPath', 'vizClosed', 'vizBoth', 'vizThick', 'vizFeather', 'start', 'end'].forEach(k => keep[k] = S.settings[k]);
+  const keep = {}; ['vizShape', 'vizMask', 'vizPath', 'vizClosed', 'vizBoth', 'vizThick', 'vizFeather', 'start', 'end',
+    'fxArea', 'fxMask', 'fxPath', 'fxClosed', 'fxThick', 'fxFeather', 'fxX', 'fxY', 'fxW', 'fxH'].forEach(k => keep[k] = S.settings[k]);
   S.settings = Object.assign({}, S.settings, p.settings, keep);
   changed('fmt'); renderViz(true); toast('✓ Vorlage geladen: ' + p.name);
 }
@@ -589,7 +591,8 @@ async function loadProject(promise) {
     const d = await promise;
     for (const k of ['audio', 'image']) { const old = S[k]; if (old && old.token !== d[k].token) api('/api/unstage', { token: old.token }).catch(() => {}) }
     S.settings = Object.assign({}, S.settings, d.settings);
-    MK.mode = modeFromSettings(); await loadMaskFromServer(S.settings.vizShape === 'mask' ? S.settings.vizMask : '');
+    MK.mode = modeFromSettings(); await loadMaskFromServer(S.settings.vizShape === 'mask' ? S.settings.vizMask : '', 'viz');
+    await loadMaskFromServer(S.settings.fxArea === 'mask' ? S.settings.fxMask : '', 'fx');
     adopt(d.audio, true); adopt(d.image, true);
     changed('fmt'); renderViz(true);
     if ($('#loadDlg').open) $('#loadDlg').close();
@@ -607,28 +610,44 @@ $('#showProjDir').onclick = () => api('/api/show', { path: S.projDir || S.outdir
 
 
 /* ---------- Markieren: Fläche malen, Linie, Ring (+ KI) ---------- */
-const MK = { mode: 'box', tool: 'brush', size: 36, aiPts: [], aiBase: null, ringAi: false, drawing: false, last: null, start: null, line: [], busy: '', drag: -1, sugTimer: 0 };
-const maskC = document.createElement('canvas');
-let maskUrl = '';
+const MK = { target: 'viz', mode: 'box', tool: 'brush', size: 36, aiPts: [], aiBase: null, ringAi: false, drawing: false, last: null, start: null, line: [], busy: '', drag: -1, sugTimer: 0 };
+const MASKC = { viz: document.createElement('canvas'), fx: document.createElement('canvas') };
+const MURL = { viz: '', fx: '' };
+const mc = () => MASKC[MK.target];
+/* Markieren gilt für den Visualizer ODER die Bild-Effekte: M.Path = vizPath bzw. fxPath usw. */
+const P = k => (MK.target === 'fx' ? 'fx' : 'viz') + k;
+const M = new Proxy({}, { get: (_, k) => S.settings[P(k)], set: (_, k, v) => { S.settings[P(k)] = v; return true } });
+function shp(t = MK.target) { const s = S.settings; if (t === 'fx') return s.fxArea === 'full' ? 'box' : s.fxArea; return s.vizShape }
+function setShp(v) { if (MK.target === 'fx') S.settings.fxArea = v === 'box' ? 'full' : v; else { S.settings.vizShape = v; if (v !== 'box') S.settings.vizDock = '' } }
+const fxOn = () => S.settings.fx && S.settings.fx !== 'none';
+function markOn() { return MK.target === 'fx' ? fxOn() : S.settings.viz }
+const tName = () => MK.target === 'fx' ? 'der Effekt' : 'der Visualizer';
 const isTall = () => fmtOf(S.settings.fmt)[3];
 function maskSize() { return isTall() ? [540, 960] : [960, 540] }
 function ensureMask() {
   const [w, h] = maskSize();
-  if (maskC.width !== w || maskC.height !== h) {
+  for (const maskC of Object.values(MASKC)) if (maskC.width !== w || maskC.height !== h) {
     const old = maskC.width ? (() => { const c = document.createElement('canvas'); c.width = maskC.width; c.height = maskC.height; c.getContext('2d').drawImage(maskC, 0, 0); return c })() : null;
     maskC.width = w; maskC.height = h;
     if (old) maskC.getContext('2d').drawImage(old, 0, 0, w, h);
-    const v = $('#markCanvas'); v.width = w; v.height = h;
   }
+  const v = $('#markCanvas'); if (v.width !== w || v.height !== h) { v.width = w; v.height = h }
 }
-function modeFromSettings() { const s = S.settings; return s.vizShape === 'mask' ? 'mask' : s.vizShape === 'path' ? (s.vizClosed ? 'ring' : 'line') : 'box' }
+function modeFromSettings() { const sh = shp(); return sh === 'mask' ? 'mask' : sh === 'path' ? (M.Closed ? 'ring' : 'line') : 'box' }
 function frameSize() { const r = $('#frame').getBoundingClientRect(); return [r.width || 1, r.height || 1] }
 function busy(text) { MK.busy = text || ''; renderMarkTools() }
 
 function renderMark() {
   if (!S.settings) return;
-  const s = S.settings, on = s.viz;
-  $('#markBar').hidden = !on;
+  const s = S.settings;
+  if (MK.target === 'fx' && !fxOn() && s.viz) { MK.target = 'viz'; MK.mode = modeFromSettings() }
+  if (MK.target === 'viz' && !s.viz && fxOn()) { MK.target = 'fx'; MK.mode = modeFromSettings() }
+  const on = markOn();
+  $('#markBar').hidden = !s.viz && !fxOn();
+  $('#mkTarget').hidden = !(s.viz && fxOn());
+  $$('#mkTarget button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.t === MK.target)));
+  $('#mkModes [data-m="box"]').textContent = MK.target === 'fx' ? 'Ganzes Bild' : 'Kasten';
+  $('#mkModes').setAttribute('aria-label', MK.target === 'fx' ? 'Wo soll der Effekt wirken?' : 'Wo soll der Visualizer entstehen?');
   ensureMask();
   $$('#mkModes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === MK.mode)));
   const fr = $('#frame');
@@ -641,12 +660,16 @@ function markHint() {
   const t = {
     box: 'Kasten: im Bild ziehen und an den Ecken skalieren. ✨ KI-Platzvorschlag findet ruhige Stellen.',
     mask: MK.tool === 'ai' ? '✨ KI-Auswahl: auf das Motiv klicken = dazunehmen · Umschalt- oder Rechtsklick = wegnehmen · mehrere Klicks verfeinern.'
-      : 'Fläche malen: Der Visualizer erscheint nur in der markierten Fläche. Die Markierung ist im fertigen Video unsichtbar.',
-    line: MK.line.length ? 'Weiter klicken für neue Punkte · Doppelklick (oder „Fertig“) beendet die Linie.' : s.vizShape === 'path' && !s.vizClosed ? 'Punkte ziehen zum Anpassen · ✨ KI verfeinern legt die Linie an die nächste Kante im Bild.' : 'Klicke Punkte entlang der Stelle, an der die Balken stehen sollen · Doppelklick beendet.',
+      : `Fläche malen: ${tName().replace(/^d/, 'D')} erscheint nur in der markierten Fläche. Die Markierung ist im fertigen Video unsichtbar.`,
+    line: MK.line.length ? 'Weiter klicken für neue Punkte · Doppelklick (oder „Fertig“) beendet die Linie.' : shp() === 'path' && !M.Closed ? 'Punkte ziehen zum Anpassen · ✨ KI verfeinern legt die Linie an die nächste Kante im Bild.'
+      : MK.target === 'fx' ? 'Klicke Punkte entlang der Stelle, an der die Lichtlinien laufen sollen · Doppelklick beendet.' : 'Klicke Punkte entlang der Stelle, an der die Balken stehen sollen · Doppelklick beendet.',
     ring: MK.ringAi ? '✨ Klick jetzt auf das Motiv – die KI legt den Ring passend darum.' : 'In die Mitte klicken und den Radius aufziehen – oder ✨ „Motiv antippen“.'
   }[MK.mode];
-  const none = (MK.mode === 'mask' && s.vizShape !== 'mask') || ((MK.mode === 'line' || MK.mode === 'ring') && s.vizShape !== 'path' && !MK.line.length);
-  h.hidden = !s.viz; h.textContent = t + (none && MK.mode !== 'box' ? ' (Noch nichts markiert – bis dahin gilt der Kasten.)' : '');
+  const fxBox = MK.target === 'fx' && MK.mode === 'box';
+  const none = (MK.mode === 'mask' && shp() !== 'mask') || ((MK.mode === 'line' || MK.mode === 'ring') && shp() !== 'path' && !MK.line.length);
+  h.hidden = !markOn();
+  h.textContent = fxBox ? 'Der Effekt wirkt auf dem ganzen Bild. Mit Fläche, Linie oder Ring legst du fest, wo genau.'
+    : t + (none && MK.mode !== 'box' ? (MK.target === 'fx' ? ' (Noch nichts markiert – bis dahin wirkt der Effekt auf dem ganzen Bild.)' : ' (Noch nichts markiert – bis dahin gilt der Kasten.)') : '');
 }
 function renderMarkTools() {
   const box = $('#mkTools'); box.textContent = '';
@@ -655,7 +678,7 @@ function renderMarkTools() {
   const slider = (label, k, min, max, step, fmt) => { const i = el('input', { type: 'range', min, max, step, value: k === 'size' ? MK.size : s[k], 'aria-label': label }); const b = el('b', {}, fmt(k === 'size' ? MK.size : s[k])); i.oninput = () => { if (k === 'size') MK.size = +i.value; else { s[k] = +i.value; drawMarkSvg(); saveSettings(); refreshCommand() } b.textContent = fmt(+i.value) }; return el('label', { class: 'mini' }, label, i, b) };
   if (MK.busy) box.append(el('span', { class: 'mk-busy' }, el('span', { class: 'spin' }), MK.busy));
   if (MK.mode === 'box') {
-    box.append(btn('✨ KI-Platzvorschlag', suggestPlaces, 'ai', { disabled: !S.image || !(ai && ai.tools) }));
+    if (MK.target === 'viz') box.append(btn('✨ KI-Platzvorschlag', suggestPlaces, 'ai', { disabled: !S.image || !(ai && ai.tools) }));
   } else if (MK.mode === 'mask') {
     const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Werkzeug' });
     [['brush', 'Pinsel'], ['erase', 'Radierer'], ['rect', 'Rechteck'], ['ellipse', 'Ellipse'], ['ai', '✨ KI-Auswahl']].forEach(([id, n]) =>
@@ -663,41 +686,46 @@ function renderMarkTools() {
     box.append(seg);
     if (MK.tool === 'brush' || MK.tool === 'erase') box.append(slider('Größe', 'size', 6, 160, 2, v => v + ' px'));
     if (MK.tool === 'ai' && MK.aiPts.length) box.append(btn('Neue KI-Auswahl', () => { MK.aiPts = []; MK.aiBase = null; renderMarkTools() }));
-    box.append(slider('Weiche Kante', 'vizFeather', 0, 5, 0.1, v => String(v).replace('.', ',') + ' %'));
-    box.append(btn('Alles löschen', () => { maskC.getContext('2d').clearRect(0, 0, maskC.width, maskC.height); MK.aiPts = []; MK.aiBase = null; renderMaskOverlay(); uploadMask() }));
+    box.append(slider('Weiche Kante', P('Feather'), 0, 5, 0.1, v => String(v).replace('.', ',') + ' %'));
+    box.append(btn('Alles löschen', () => { mc().getContext('2d').clearRect(0, 0, mc().width, mc().height); MK.aiPts = []; MK.aiBase = null; renderMaskOverlay(); uploadMask() }));
   } else {
     if (MK.mode === 'line') {
       if (MK.line.length) box.append(btn('Fertig', finishLine, 'glow'));
-      box.append(btn('✨ KI verfeinern', refineLine, 'ai', { disabled: !(s.vizShape === 'path' && !s.vizClosed) || !(ai && ai.tools) }));
-      box.append(btn('Neu zeichnen', () => { MK.line = []; if (s.vizShape === 'path') { s.vizShape = 'box'; changed('viz') } else renderMark() }));
+      box.append(btn('✨ KI verfeinern', refineLine, 'ai', { disabled: !(shp() === 'path' && !M.Closed) || !(ai && ai.tools) }));
+      box.append(btn('Neu zeichnen', () => { MK.line = []; if (shp() === 'path') { setShp('box'); changed('viz') } else renderMark() }));
     } else {
       box.append(btn('✨ Motiv antippen', () => { MK.ringAi = !MK.ringAi; renderMarkTools(); markHint() }, 'ai', { 'aria-pressed': String(MK.ringAi), disabled: !S.image || !(ai && ai.tools) }));
     }
-    const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Richtung' });
-    [[false, MK.mode === 'ring' ? 'Nach außen' : 'Nach oben'], [true, 'Beidseitig']].forEach(([v, n]) => seg.append(el('button', { type: 'button', 'aria-pressed': String(s.vizBoth === v), onclick: () => set('vizBoth', v) }, n)));
-    box.append(seg, slider('Dicke', 'vizThick', 3, 40, 1, v => v + ' %'));
+    if (MK.target === 'viz') {
+      const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Richtung' });
+      [[false, MK.mode === 'ring' ? 'Nach außen' : 'Nach oben'], [true, 'Beidseitig']].forEach(([v, n]) => seg.append(el('button', { type: 'button', 'aria-pressed': String(s.vizBoth === v), onclick: () => set('vizBoth', v) }, n)));
+      box.append(seg, slider('Dicke', 'vizThick', 3, 40, 1, v => v + ' %'));
+    } else box.append(slider(s.fx === 'streaks' ? 'Leuchtbreite' : 'Bandbreite', 'fxThick', 2, 40, 1, v => v + ' %'));
   }
 }
-$$('#mkModes button').forEach(b => b.onclick = () => {
-  const m = b.dataset.m, s = S.settings; MK.mode = m; MK.line = []; MK.ringAi = false; $('#sugBox').hidden = true;
-  if (m === 'box') s.vizShape = 'box';
-  else if (m === 'mask') { if (s.vizMask) s.vizShape = 'mask' }
-  else if (s.vizPath && s.vizPath.length > 1 && s.vizClosed === (m === 'ring')) s.vizShape = 'path';
-  else if (s.vizShape !== 'box') s.vizShape = 'box';
+function pickMode(m) {
+  MK.mode = m; MK.line = []; MK.ringAi = false; $('#sugBox').hidden = true;
+  if (m === 'box') setShp('box');
+  else if (m === 'mask') { if (M.Mask) setShp('mask') }
+  else if (M.Path && M.Path.length > 1 && M.Closed === (m === 'ring')) setShp('path');
+  else if (shp() !== 'box') setShp('box');
   changed('viz');
-});
+}
+$$('#mkModes button').forEach(b => b.onclick = () => pickMode(b.dataset.m));
+function pickTarget(t) { MK.target = t; MK.line = []; MK.ringAi = false; MK.aiPts = []; MK.mode = modeFromSettings(); changed('viz') }
+$$('#mkTarget button').forEach(b => b.onclick = () => pickTarget(b.dataset.t));
 
 /* Fläche malen */
 function renderMaskOverlay() {
   const v = $('#markCanvas'), g = v.getContext('2d');
-  g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, v.width, v.height); g.drawImage(maskC, 0, 0);
+  g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, v.width, v.height); g.drawImage(mc(), 0, 0);
   g.globalCompositeOperation = 'source-in'; g.fillStyle = 'rgba(255,90,170,.45)'; g.fillRect(0, 0, v.width, v.height);
   g.globalCompositeOperation = 'source-over';
 }
 function cpos(e) { const v = $('#markCanvas'), r = v.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * v.width, (e.clientY - r.top) / r.height * v.height] }
 function stroke(a, b) {
-  const g = maskC.getContext('2d'); g.globalCompositeOperation = MK.tool === 'erase' ? 'destination-out' : 'source-over';
-  g.strokeStyle = g.fillStyle = '#fff'; g.lineCap = 'round'; g.lineWidth = MK.size * maskC.width / 960;
+  const g = mc().getContext('2d'); g.globalCompositeOperation = MK.tool === 'erase' ? 'destination-out' : 'source-over';
+  g.strokeStyle = g.fillStyle = '#fff'; g.lineCap = 'round'; g.lineWidth = MK.size * mc().width / 960;
   g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
   g.beginPath(); g.arc(b[0], b[1], g.lineWidth / 2, 0, Math.PI * 2); g.fill(); g.globalCompositeOperation = 'source-over';
 }
@@ -705,7 +733,7 @@ function shapePath(g, a, b) { g.beginPath(); if (MK.tool === 'rect') g.rect(Math
 $('#markCanvas').addEventListener('contextmenu', e => e.preventDefault());
 $('#markCanvas').addEventListener('pointerdown', e => {
   e.preventDefault(); const p = cpos(e);
-  if (MK.tool === 'ai') { aiClick(p[0] / maskC.width, p[1] / maskC.height, !(e.shiftKey || e.button === 2)); return }
+  if (MK.tool === 'ai') { aiClick(p[0] / mc().width, p[1] / mc().height, !(e.shiftKey || e.button === 2)); return }
   $('#markCanvas').setPointerCapture(e.pointerId); MK.drawing = true; MK.last = p; MK.start = p;
   if (MK.tool === 'brush' || MK.tool === 'erase') { stroke(p, p); renderMaskOverlay() }
 });
@@ -716,30 +744,41 @@ $('#markCanvas').addEventListener('pointermove', e => {
 });
 $('#markCanvas').addEventListener('pointerup', e => {
   if (!MK.drawing) return; MK.drawing = false; const p = cpos(e);
-  if (MK.tool === 'rect' || MK.tool === 'ellipse') { const g = maskC.getContext('2d'); shapePath(g, MK.start, p); g.fillStyle = '#fff'; g.fill() }
+  if (MK.tool === 'rect' || MK.tool === 'ellipse') { const g = mc().getContext('2d'); shapePath(g, MK.start, p); g.fillStyle = '#fff'; g.fill() }
   renderMaskOverlay(); uploadMask();
 });
 const uploadMask = debounce(async () => {
+  const tg = MK.target, maskC = MASKC[tg];
   try {
     const blob = await new Promise(r => maskC.toBlob(r, 'image/png'));
     const r = await fetch('/api/mark/mask', { method: 'POST', headers: { 'X-Studio': TOKEN }, body: blob });
     const d = await r.json(); if (!r.ok) throw new Error(d.error);
-    const s = S.settings;
-    if (d.token) { maskUrl = maskC.toDataURL('image/png'); Object.assign(s, { vizShape: 'mask', vizMask: d.token, vizX: d.bbox[0], vizY: d.bbox[1], vizW: Math.max(2, d.bbox[2]), vizH: Math.max(2, d.bbox[3]), vizDock: '' }) }
-    else { s.vizShape = 'box'; s.vizMask = ''; maskUrl = '' }
+    const s = S.settings, k = tg === 'fx' ? 'fx' : 'viz';
+    if (d.token) {
+      MURL[tg] = maskC.toDataURL('image/png');
+      Object.assign(s, { [k + 'Mask']: d.token, [k + 'X']: d.bbox[0], [k + 'Y']: d.bbox[1], [k + 'W']: Math.max(2, d.bbox[2]), [k + 'H']: Math.max(2, d.bbox[3]) });
+      if (tg === 'fx') s.fxArea = 'mask'; else Object.assign(s, { vizShape: 'mask', vizDock: '' });
+    } else { s[k + 'Mask'] = ''; MURL[tg] = ''; if (tg === 'fx') s.fxArea = 'full'; else s.vizShape = 'box' }
     changed('viz');
   } catch (e) { toast('Maske: ' + e.message, true) }
 }, 350);
-async function loadMaskFromServer(tok) {
-  ensureMask(); const g = maskC.getContext('2d'); g.clearRect(0, 0, maskC.width, maskC.height);
-  if (!tok) { maskUrl = ''; renderMaskOverlay(); return }
+async function loadMaskFromServer(tok, tg = 'viz') {
+  ensureMask(); const maskC = MASKC[tg], g = maskC.getContext('2d'); g.clearRect(0, 0, maskC.width, maskC.height);
+  if (!tok) { MURL[tg] = ''; renderMaskOverlay(); return }
   try {
-    const blob = await (await fetch('/api/maskfile/' + tok, { headers: { 'X-Studio': TOKEN } })).blob();
-    const img = await createImageBitmap(blob); grayToAlpha(img, g); maskUrl = maskC.toDataURL('image/png'); renderMaskOverlay(); placeVizBox();
+    const resp = await fetch('/api/maskfile/' + tok, { headers: { 'X-Studio': TOKEN } });
+    if (!resp.ok) {                                // Markierung von einer früheren Sitzung gibt es nicht mehr
+      MURL[tg] = '';
+      if (tg === 'fx') { S.settings.fxMask = ''; if (S.settings.fxArea === 'mask') S.settings.fxArea = 'full' }
+      else { S.settings.vizMask = ''; if (S.settings.vizShape === 'mask') S.settings.vizShape = 'box' }
+      MK.mode = modeFromSettings(); changed('viz'); return;
+    }
+    const blob = await resp.blob();
+    const img = await createImageBitmap(blob); grayToAlpha(img, g); MURL[tg] = maskC.toDataURL('image/png'); renderMaskOverlay(); placeVizBox();
   } catch (_) {}
 }
 function grayToAlpha(img, g) {
-  const t = document.createElement('canvas'); t.width = maskC.width; t.height = maskC.height;
+  const maskC = g.canvas, t = document.createElement('canvas'); t.width = maskC.width; t.height = maskC.height;
   const tg = t.getContext('2d'); tg.drawImage(img, 0, 0, t.width, t.height);
   const d = tg.getImageData(0, 0, t.width, t.height), a = d.data;
   for (let i = 0; i < a.length; i += 4) { const v = a[i]; a[i] = a[i + 1] = a[i + 2] = 255; a[i + 3] = v }
@@ -747,6 +786,7 @@ function grayToAlpha(img, g) {
 }
 async function aiClick(x, y, add) {
   if (!S.image) { toast('Zuerst ein Bild hineinziehen'); return }
+  const maskC = mc();
   if (!MK.aiPts.length) { MK.aiBase = document.createElement('canvas'); MK.aiBase.width = maskC.width; MK.aiBase.height = maskC.height; MK.aiBase.getContext('2d').drawImage(maskC, 0, 0) }
   MK.aiPts.push([x, y, add ? 1 : 0]);
   busy('KI erkennt das Motiv …');
@@ -763,7 +803,7 @@ async function aiClick(x, y, add) {
 /* Linie & Ring */
 function spos(e) { const r = $('#frame').getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height] }
 $('#markSvg').addEventListener('pointerdown', e => {
-  const s = S.settings; if (!s.viz || (MK.mode !== 'line' && MK.mode !== 'ring')) return;
+  if (!markOn() || (MK.mode !== 'line' && MK.mode !== 'ring')) return;
   e.preventDefault(); const p = spos(e);
   if (e.target.classList.contains('pt') && !MK.line.length) { MK.drag = +e.target.dataset.i; $('#markSvg').setPointerCapture(e.pointerId); return }
   if (MK.mode === 'line') {
@@ -775,8 +815,8 @@ $('#markSvg').addEventListener('pointerdown', e => {
   MK.start = p; MK.drawing = true; $('#markSvg').setPointerCapture(e.pointerId);
 });
 $('#markSvg').addEventListener('pointermove', e => {
-  const s = S.settings, p = spos(e);
-  if (MK.drag >= 0) { s.vizPath[MK.drag] = p; drawMarkSvg(); return }
+  const p = spos(e);
+  if (MK.drag >= 0) { M.Path[MK.drag] = p; drawMarkSvg(); return }
   if (MK.drawing && MK.mode === 'ring') { setRing(MK.start, p); drawMarkSvg() }
 });
 $('#markSvg').addEventListener('pointerup', () => {
@@ -786,17 +826,17 @@ $('#markSvg').addEventListener('pointerup', () => {
 function setRing(c, p) {
   const [fw, fh] = frameSize(), r = Math.max(8, Math.hypot((p[0] - c[0]) * fw, (p[1] - c[1]) * fh)), pts = [];
   for (let i = 0; i < 96; i++) { const a = i / 96 * Math.PI * 2; pts.push([+(c[0] + r / fw * Math.cos(a)).toFixed(5), +(c[1] + r / fh * Math.sin(a)).toFixed(5)]) }
-  Object.assign(S.settings, { vizShape: 'path', vizClosed: true, vizPath: pts, vizDock: '' });
+  M.Closed = true; M.Path = pts; setShp('path');
 }
 function finishLine() {
   const [fw, fh] = frameSize(); MK.line = MK.line.filter((q, i, l) => !i || Math.hypot((q[0] - l[i - 1][0]) * fw, (q[1] - l[i - 1][1]) * fh) > 6);
   if (MK.line.length < 2) { toast('Für eine Linie mindestens zwei Punkte setzen'); return }
-  Object.assign(S.settings, { vizShape: 'path', vizClosed: false, vizPath: MK.line.map(q => [+q[0].toFixed(5), +q[1].toFixed(5)]), vizDock: '' });
+  M.Closed = false; M.Path = MK.line.map(q => [+q[0].toFixed(5), +q[1].toFixed(5)]); setShp('path');
   MK.line = []; changed('viz');
 }
 async function refineLine() {
   busy('KI legt die Linie an die Kante …');
-  try { const d = await api('/api/mark/refine', { image: S.image.token, settings: S.settings, points: S.settings.vizPath, closed: false }); S.settings.vizPath = d.points; changed('viz'); toast('✓ Linie verfeinert') }
+  try { const d = await api('/api/mark/refine', { image: S.image.token, settings: S.settings, points: M.Path, closed: false }); M.Path = d.points; changed('viz'); toast('✓ Linie verfeinert') }
   catch (e) { toast(e.message, true) } finally { busy('') }
 }
 async function ringFromAi(p) {
@@ -824,12 +864,12 @@ function resamplePx(p, n, closed) {
 function drawMarkSvg() {
   const svg = $('#markSvg'), s = S.settings; if (!s) return;
   const [fw, fh] = frameSize(); svg.setAttribute('viewBox', `0 0 ${fw} ${fh}`);
-  if (!s.viz || (MK.mode !== 'line' && MK.mode !== 'ring' && s.vizShape !== 'path')) { svg.innerHTML = ''; return }
   let html = '';
-  const editPts = MK.line.length ? MK.line : (s.vizShape === 'path' ? s.vizPath : []);
+  if (s.viz && s.vizShape === 'path' && !(MK.target === 'viz' && MK.line.length)) html += pathSketch(pathPx(s.vizPath, fw, fh), s.vizClosed, fw, fh);
+  const editing = markOn() && (MK.mode === 'line' || MK.mode === 'ring');
+  const editPts = MK.line.length ? MK.line : (editing && shp() === 'path' ? M.Path : []);
   if (editPts.length) {
-    const px = pathPx(editPts, fw, fh), closed = !MK.line.length && s.vizClosed;
-    if (s.vizShape === 'path' && !MK.line.length) html += pathSketch(px, closed, fw, fh);
+    const px = pathPx(editPts, fw, fh), closed = !MK.line.length && M.Closed;
     html += `<polyline points="${px.concat(closed ? [px[0]] : []).map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ')}" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="6 5" opacity=".8"/>`;
     if (MK.mode === 'line' || (MK.mode === 'ring' && false)) px.forEach((q, i) => { html += `<circle class="pt" data-i="${i}" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="6"/>` });
   }
@@ -867,11 +907,197 @@ async function suggestPlaces() {
 }
 
 
+/* ---------- Bild-Effekte & Kamera ---------- */
+const FX_ICON = {
+  none: '<path d="M5 5l14 14M19 5L5 19"/>', streaks: '<path d="M3 17L14 6M8 20L20 8M2 11l6-6"/>', sparks: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18"/>',
+  glitter: '<path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/>', bokeh: '<circle cx="8" cy="9" r="4"/><circle cx="16" cy="15" r="5"/><circle cx="17" cy="6" r="2"/>',
+  dust: '<circle cx="6" cy="7" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="17" cy="6" r="1"/><circle cx="9" cy="17" r="1"/><circle cx="18" cy="16" r="1"/>',
+  snow: '<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/>', rain: '<path d="M8 3l-2 6M14 5l-2 6M20 3l-2 6M10 13l-2 6M16 13l-2 6"/>',
+  fog: '<path d="M3 9h13a3 3 0 0 0 0-6M3 15h17a3 3 0 0 1 0 6M3 12h9"/>', flow: '<path d="M2 8c3-3 5 3 8 0s5 3 8 0 3-1 4-1M2 14c3-3 5 3 8 0s5 3 8 0 3-1 4-1"/>'
+};
+const FX_SLIDERS = [
+  ['fxAmount', 'Menge', 1, 100, 1, v => v + ' %', 'wie viele Teilchen bzw. wie stark'],
+  ['fxSpeed', 'Tempo', 1, 100, 1, v => v + ' %', 'wie schnell sie sich bewegen'],
+  ['fxSize', 'Größe', 1, 100, 1, v => v + ' %', 'wie groß Teilchen und Linien sind'],
+  ['fxAlpha', 'Deckkraft', 5, 100, 5, v => v + ' %', 'weniger = zarter'],
+  ['fxAngle', 'Winkel', -75, 75, 5, v => v + '°', 'Richtung von Lichtlinien bzw. Regen']
+];
+const CAM_SLIDERS = [['camAmount', 'Stärke', 1, 100, 1, v => v + ' %'], ['camSpeed', 'Tempo', 1, 100, 1, v => v + ' %']];
+const FXM = [['auto', 'Farben aus dem Bild'], ['solid', 'Eigene Farbe'], ['rainbow', 'Regenbogen']];
+let IMGCOL = { key: '', cols: ['#f5b544', '#ff5fa2', '#7cc8ff'], avg: '#c8b8a0' };
+function imageColors() {
+  const img = $('#stillImg'); if (!img.complete || !img.naturalWidth || img.hidden) return IMGCOL;
+  if (IMGCOL.key === img.src) return IMGCOL;
+  try {
+    const c = document.createElement('canvas'); c.width = 40; c.height = 24; const g = c.getContext('2d'); g.drawImage(img, 0, 0, 40, 24);
+    const d = g.getImageData(0, 0, 40, 24).data, px = []; let r = 0, gg = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]); px.push([mx - mn + mx * 0.4, d[i], d[i + 1], d[i + 2]]) }
+    const n = d.length / 4; px.sort((a, b) => b[0] - a[0]);
+    const cols = [];
+    for (const q of px) { if (cols.every(c => Math.abs(c[0] - q[1]) + Math.abs(c[1] - q[2]) + Math.abs(c[2] - q[3]) > 90)) cols.push(q.slice(1)); if (cols.length >= 3) break }
+    const hx = c => '#' + c.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+    IMGCOL = { key: img.src, cols: cols.length ? cols.map(hx) : IMGCOL.cols, avg: hx([r / n, gg / n, b / n]) };
+  } catch (_) {}
+  return IMGCOL;
+}
+function fxColors() {
+  const s = S.settings;
+  if (s.fxColorMode === 'solid') return [s.fxColor, s.fxColor];
+  if (s.fxColorMode === 'rainbow') return RAINBOW;
+  const ic = imageColors();
+  if (['snow', 'rain', 'fog', 'dust'].includes(s.fx)) return [mix(ic.avg, '#ffffff', .78), mix(ic.cols[0], '#ffffff', .7)];
+  if (s.fx === 'sparks') return [mix(ic.cols[0], '#ff9628', .55), mix(ic.cols[0], '#ffecaa', .6)];
+  return ic.cols;
+}
+function renderFx() {
+  if (!S.settings || !S.info || !S.info.fx) return;
+  const s = S.settings, info = S.info.fx, on = s.fx !== 'none';
+  const tb = $('#fxTiles');
+  if (!tb.childElementCount) info.effects.forEach(e => tb.append(el('button', { type: 'button', class: 'fxtile', 'data-id': e.id, title: e.name, 'aria-label': e.name, onclick: () => setFx(e.id) },
+    el('span', { class: 'fx-ic', 'aria-hidden': 'true', html: `<svg viewBox="0 0 24 24">${FX_ICON[e.id] || ''}</svg>` }), el('span', {}, e.short))));
+  $$('.fxtile').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === s.fx)));
+  const cur = info.effects.find(e => e.id === s.fx) || info.effects[0];
+  $('#fxDesc').textContent = cur.desc;
+  const camName = (info.cams.find(c => c.id === s.cam) || info.cams[0]).name;
+  $('#fxChip').textContent = on ? cur.name + (s.cam !== 'none' ? ' + ' + camName : '') : s.cam !== 'none' ? camName : 'Aus';
+  $('#fxChip').classList.toggle('acc', on || s.cam !== 'none');
+  $('#fxBody').classList.toggle('off', !on);
+  const where = shp('fx'), wm = where === 'path' ? (s.fxClosed ? 'ring' : 'line') : where;
+  $$('#fxWhere button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === wm)));
+  $('#fxWhereHint').textContent = s.fx === 'flow' ? 'Tipp: Fließen wirkt am schönsten auf einer gemalten Fläche (Wasser, Himmel, Feuer).'
+    : s.fx === 'streaks' ? 'Mit Linie oder Ring laufen die Lichtlinien genau dort entlang.' : 'Markieren geht direkt im Vorschaubild oben.';
+  const mb = $('#fxModes'); mb.textContent = '';
+  const ic = imageColors(), sw = { auto: `linear-gradient(90deg,${ic.cols.join(',')})`, solid: s.fxColor, rainbow: `linear-gradient(90deg,${RAINBOW.join(',')})` };
+  FXM.forEach(([id, n]) => mb.append(el('button', { type: 'button', class: 'mode', 'aria-pressed': String(s.fxColorMode === id), onclick: () => set('fxColorMode', id) }, el('i', { style: 'background:' + sw[id] }), n)));
+  $('#fxColor').value = s.fxColor;
+  $('#fxColorWrap').hidden = s.fxColorMode !== 'solid' || s.fx === 'flow';
+  $('#fxModes').hidden = s.fx === 'flow';
+  $('#fxBeat').setAttribute('aria-checked', String(s.fxBeat)); $('#fxBeat .switch').setAttribute('aria-checked', String(s.fxBeat));
+  $('#fxBeat').hidden = s.fx === 'flow';
+  const list = FX_SLIDERS.filter(q => q[0] !== 'fxAngle' || ['streaks', 'rain'].includes(s.fx)).filter(q => s.fx !== 'flow' || ['fxAmount', 'fxSpeed', 'fxSize'].includes(q[0]));
+  fxSliders($('#fxSliders'), list);
+  const cs = $('#camSeg'); if (!cs.childElementCount) info.cams.forEach(c => cs.append(el('button', { type: 'button', 'data-v': c.id, onclick: () => set('cam', c.id) }, c.name.replace(' (KI)', ''))));
+  $$('#camSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.cam)));
+  const cd = info.cams.find(c => c.id === s.cam) || info.cams[0];
+  $('#camHint').textContent = cd.desc + (s.cam === 'depth' ? (info.depth ? ' Die Tiefe erkennt eine KI auf deinem PC.' : ' (KI-Modell fehlt – es wird eine einfache Tiefenschätzung benutzt.)') + ' Braucht beim Umwandeln deutlich mehr Zeit.' : '');
+  $('#camSliders').hidden = s.cam === 'none';
+  fxSliders($('#camSliders'), CAM_SLIDERS);
+  $('#fxPreviewBtn').disabled = !on && s.cam === 'none';
+}
+function fxSliders(box, list) {
+  const key = list.map(q => q[0]).join();
+  if (box.dataset.key === key && box.contains(document.activeElement) && document.activeElement.type === 'range') return;
+  if (box.dataset.key === key) { list.forEach(([k, , , , , f]) => { const i = box.querySelector(`input[data-k="${k}"]`); if (i && document.activeElement !== i) i.value = S.settings[k]; box.querySelector(`b[data-k="${k}"]`).textContent = f(S.settings[k]) }); return }
+  box.dataset.key = key; box.textContent = '';
+  for (const [k, label, min, max, step, f, hint] of list) {
+    const id = 'fx-' + k, inp = el('input', { type: 'range', id, min, max, step, value: S.settings[k], 'data-k': k });
+    inp.oninput = () => { S.settings[k] = +inp.value; box.querySelector(`b[data-k="${k}"]`).textContent = f(+inp.value); FXS.key = ''; saveSettings(); refreshCommand() };
+    box.append(el('div', { class: 'sl', title: hint || '' }, el('div', { class: 'sl-top' }, el('label', { for: id }, label), el('b', { 'data-k': k }, f(S.settings[k]))), inp));
+  }
+}
+function setFx(id) {
+  const s = S.settings, was = s.fx; s.fx = id;
+  if (id !== 'none' && was === 'none') { MK.target = 'fx'; MK.mode = modeFromSettings() }
+  if (id === 'streaks' && was !== 'streaks') s.fxAngle = -20;
+  if (id === 'rain' && was !== 'rain') s.fxAngle = 20;
+  FXS.key = ''; changed('fx');
+}
+$$('#fxWhere button').forEach(b => b.onclick = () => {
+  if (S.settings.fx === 'none') { toast('Zuerst einen Effekt auswählen'); return }
+  MK.target = 'fx'; pickMode(b.dataset.m);
+  $('#stage').scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+$('#fxColor').oninput = e => { S.settings.fxColor = e.target.value; FXS.key = ''; saveSettings(); refreshCommand(); renderFx() };
+$('#fxBeat').onclick = () => set('fxBeat', !S.settings.fxBeat);
+$('#fxPreviewBtn').onclick = previewViz;
+
+/* Skizze im Vorschaubild (das echte Ergebnis zeigt „Vorschau mit Ton“) */
+const FXS = { key: '', parts: [], t: 0, last: 0 };
+function fxParts(s, W, H) {
+  const r = seeded(s.fxSeed + 7), u = H / 540, amt = s.fxAmount / 50, size = 0.4 + s.fxSize / 50 * 0.6, out = [];
+  const lay = { sparks: [[40, 1.6, -88, 60], [20, 2.4, -85, 105], [8, 3.4, -82, 165]], snow: [[60, 1.2, 98, 22], [26, 2.2, 100, 42], [8, 3.6, 104, 75]],
+    dust: [[60, .8, 20, 7], [30, 1.2, 12, 11], [10, 1.8, 30, 17]], bokeh: [[5, 13, -85, 5], [3, 22, -80, 8], [2, 34, -95, 12]],
+    rain: [[70, 17, 90, 450], [30, 30, 90, 700], [10, 55, 90, 1050]], glitter: [[40, 3, 0, 0]], streaks: [[10, 130, 0, 210], [5, 210, 0, 350]], fog: [[5, 160, 0, 9], [4, 220, 180, 15]] }[s.fx] || [];
+  for (const [n, rad, ang, v] of lay) for (let i = 0; i < Math.max(2, Math.round(n * amt * (W * H) / (960 * 540))); i++)
+    out.push({ x: r() * W, y: r() * H, r: rad * u * size * (0.6 + r() * 0.8), ang, v: v * u, ph: r() * 6.28, b: 0.6 + r() * 0.4 });
+  return out;
+}
+function fxFrame(ts) {
+  requestAnimationFrame(fxFrame);
+  if (!S.settings || document.hidden || ts - FXS.last < 40) return;
+  const dt = Math.min(0.1, (ts - FXS.last) / 1000); FXS.last = ts;
+  const s = S.settings, cv = $('#fxCanvas'), img = $('#stillImg');
+  const spd = 0.15 + s.fxSpeed / 50; FXS.t += dt * spd;
+  // Kamera als Skizze: Bild bewegt sich per CSS
+  if (s.cam !== 'none' && !img.hidden) {
+    const P = 40 - s.camSpeed * 0.32, ph = performance.now() / 1000 / P * 2 * Math.PI, A = s.camAmount / 100;
+    img.style.transform = s.cam === 'zoom' ? `scale(${1 + (0.02 + A * 0.14) * (1 - Math.cos(ph)) / 2})`
+      : s.cam === 'pan' ? `scale(${1 + 0.05 + A * 0.1}) translateX(${Math.sin(ph) * (0.05 + A * 0.1) / 2 * 100}%)`
+      : `scale(${1.035 + A * 0.02 * (1 - Math.cos(ph / 2)) / 2}) translateX(${Math.sin(ph) * A * 0.6}%)`;
+  } else img.style.transform = '';
+  const r = cv.getBoundingClientRect(), W = Math.round(r.width), H = Math.round(r.height);
+  if (!W || !H) return;
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; FXS.key = '' }
+  const g = cv.getContext('2d'); g.clearRect(0, 0, W, H);
+  if (s.fx === 'none' || s.fx === 'flow' || img.hidden) { cv.style.filter = ''; return }
+  const key = [s.fx, s.fxAmount, s.fxSize, s.fxSeed, W, H].join();
+  if (key !== FXS.key) { FXS.key = key; FXS.parts = fxParts(s, W, H) }
+  const cols = fxColors(), t = FXS.t, lv = s.fxBeat ? 0.5 + 0.5 * level(VT) : 1;
+  g.globalAlpha = Math.min(1, s.fxAlpha / 100 * lv * 1.2);
+  const wrap = (v, m) => ((v % m) + m) % m;
+  const pathMode = s.fx === 'streaks' && s.fxArea === 'path' && s.fxPath.length > 1;
+  if (pathMode) {
+    const pts = resamplePx(pathPx(s.fxPath, W, H), 240, s.fxClosed), n = Math.max(2, Math.round(pts.length / 40 * s.fxAmount / 50));
+    g.lineCap = 'round'; g.lineWidth = Math.max(1.5, 2.2 * H / 540 * (0.4 + s.fxSize / 50 * 0.6)); g.shadowBlur = 8; 
+    for (let k = 0; k < n; k++) {
+      const head = Math.floor(wrap(k / n * pts.length + t * 60, pts.length)), len = 22;
+      g.strokeStyle = g.shadowColor = cols[k % cols.length]; g.beginPath();
+      for (let j = 0; j < len; j++) { const q = pts[s.fxClosed ? wrap(head - j, pts.length) : Math.max(0, head - j)]; j ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]) }
+      g.stroke();
+    }
+    g.shadowBlur = 0;
+  } else for (const [i, p] of FXS.parts.entries()) {
+    const c = cols[i % cols.length], a = p.ang * Math.PI / 180;
+    let x = p.x, y = p.y;
+    if (s.fx === 'streaks' || s.fx === 'rain') { const ang = (s.fx === 'rain' ? 90 + s.fxAngle * 0.5 : s.fxAngle) * Math.PI / 180;
+      x = wrap(p.x + Math.cos(ang) * p.v * t, W); y = wrap(p.y + Math.sin(ang) * p.v * t, H);
+      const L = p.r, tx = x - Math.cos(ang) * L, ty = y - Math.sin(ang) * L, gr = g.createLinearGradient(tx, ty, x, y);
+      gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, c);
+      g.strokeStyle = gr; g.lineWidth = s.fx === 'rain' ? Math.max(1, p.r / 25) : Math.max(1.2, p.r / 60); g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke(); continue }
+    if (s.fx !== 'glitter') { x = wrap(p.x + Math.cos(a) * p.v * t, W); y = wrap(p.y + Math.sin(a) * p.v * t, H) }
+    let b = p.b;
+    if (s.fx === 'glitter') b *= Math.max(0, Math.sin(t * 2.2 + p.ph));
+    if (s.fx === 'sparks') b *= 0.55 + 0.45 * Math.sin(t * 9 + p.ph);
+    if (s.fx === 'dust') b *= 0.6 + 0.4 * Math.sin(t * 1.5 + p.ph);
+    g.globalAlpha = Math.min(1, s.fxAlpha / 100 * lv * 1.2) * b * (s.fx === 'fog' ? 0.32 : s.fx === 'bokeh' ? 0.45 : 1);
+    const gr = g.createRadialGradient(x, y, 0, x, y, p.r * (s.fx === 'bokeh' ? 1 : 2.2));
+    gr.addColorStop(0, c); gr.addColorStop(s.fx === 'bokeh' ? 0.85 : 0.35, c); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, p.r * (s.fx === 'bokeh' ? 1 : 2.2), 0, Math.PI * 2); g.fill();
+    if (s.fx === 'glitter' && b > 0.3) { g.strokeStyle = c; g.lineWidth = 1; g.beginPath(); g.moveTo(x - p.r * 3, y); g.lineTo(x + p.r * 3, y); g.moveTo(x, y - p.r * 3); g.lineTo(x, y + p.r * 3); g.stroke() }
+  }
+  g.globalAlpha = 1;
+  // Bereich: Fläche (Maske) bzw. Band entlang der Linie
+  if (s.fxArea === 'mask' && MURL.fx) { g.globalCompositeOperation = 'destination-in'; g.drawImage(MASKC.fx, 0, 0, W, H); g.globalCompositeOperation = 'source-over' }
+  else if (s.fxArea === 'path' && !pathMode && s.fxPath.length > 1) {
+    g.globalCompositeOperation = 'destination-in'; g.lineWidth = s.fxThick / 100 * H * 2; g.lineCap = g.lineJoin = 'round'; g.strokeStyle = '#000';
+    g.beginPath(); pathPx(s.fxPath, W, H).forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])); if (s.fxClosed) g.closePath(); g.stroke();
+    g.globalCompositeOperation = 'source-over';
+  }
+}
+requestAnimationFrame(fxFrame);
+
+/* KI-Video – kommt später */
+function renderSoon() {
+  const gp = S.info && S.info.gpu; if (!gp) return;
+  $('#soonText').textContent = (gp.cards && gp.cards.length ? gp.text.replace('Grafikkarte: ', 'Deine Grafikkarte: ') + ' – ' : '') + gp.video_text;
+  $('#soonGpu').dataset.lvl = gp.video_ai;
+}
+
 /* ---------- Änderungen ---------- */
 const saveSettings = debounce(() => api('/api/config', { settings: S.settings }).catch(() => {}), 600);
 function changed(what) {
   const s = S.settings;
-  renderFormats(); renderFits(); renderFps(); renderEnc(); renderSeg('#colorSeg', 'color'); renderViz();
+  renderFormats(); renderFits(); renderFps(); renderEnc(); renderSeg('#colorSeg', 'color'); renderViz(); renderFx();
   $('#fadeIn').value = s.fadeIn; $('#fadeOut').value = s.fadeOut;
   $('#fiVal').textContent = secDe(s.fadeIn); $('#foVal').textContent = secDe(s.fadeOut);
   $('#lgIn').textContent = secDe(s.fadeIn); $('#lgOut').textContent = secDe(s.fadeOut);
@@ -1282,7 +1508,10 @@ applyTheme(S.theme);
     fillTransitions(info.transitions || []);
     S.settings = info.settings; S.outdir = info.outdir; showDir();
     S.presets = info.presets || []; renderPresets();
-    MK.mode = modeFromSettings(); if (S.settings.vizShape === 'mask') loadMaskFromServer(S.settings.vizMask);
+    MK.mode = modeFromSettings(); if (S.settings.vizShape === 'mask') loadMaskFromServer(S.settings.vizMask, 'viz');
+    if (S.settings.fxArea === 'mask') loadMaskFromServer(S.settings.fxMask, 'fx');
+    renderFx(); renderSoon();
+    $('#gpuText').textContent = info.gpu ? info.gpu.text : '';
     $('#aiText').textContent = info.ai ? (info.ai.model ? '✨ ' : '') + info.ai.text : '';
     $('#verText').textContent = info.version;
     $('#ffDot').className = 'dot ' + (info.ffmpeg ? 'ok' : 'bad');
