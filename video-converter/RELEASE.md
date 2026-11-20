@@ -1,4 +1,4 @@
-**Butchies Video Converter AI 1.1.3**: Videos mit KI-Hilfe in H.264 / H.265 umwandeln. Dazu gibt es einen Player für alle Codecs, einen Vorher/Nachher-Vergleich und einen Ordner-Abgleich.
+**Butchies Video Converter AI 1.1.4**: Videos mit KI-Hilfe in H.264 / H.265 umwandeln. Dazu gibt es einen Player für alle Codecs, einen Vorher/Nachher-Vergleich und einen Ordner-Abgleich.
 
 **Installieren:** `Butchies_Video_Converter-Setup.exe` herunterladen und starten. Du brauchst dafür keine Administratorrechte.
 Der Installer sucht das **Laufwerk mit dem meisten freien Speicher** und schlägt dort Programm- und Video-Ordner vor.
@@ -34,3 +34,7 @@ FFmpeg mit allen Codecs ist dabei (inklusive VMAF-Messung und HDR). WebView2 wir
 
 **Neu in 1.1.3**
 - Das Programm **merkt sich jetzt alles** bis zum nächsten Start: Design, Start-Animation an/aus, Auto/Manuell-Schalter, eigene Einstellungen (Codec, Zielgröße, Zeitplan …) und eigene Vorlagen. Bisher ging das beim Neustart verloren
+
+**Neu in 1.1.4**
+- Steht ein alter Codec im Dateinamen (x264, H.264, AVC …), **fragt die KI vor dem Start**, ob sie ihn passend ändern soll, z. B. `…BluRay.x264-DETAiLS` zu `…BluRay.x265-DETAiLS`. Wird das Bild verkleinert, passt sie auch die Auflösung an (1080p → 720p). Der restliche Name bleibt wie im Original
+- „Antwort merken“ oder unter „Ausgabe & Zeitplan“: immer fragen, immer anpassen oder nie
