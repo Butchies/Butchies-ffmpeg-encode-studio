@@ -748,7 +748,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 
 /* ---------- Tabs ---------- */
-function showTab(v){const view=v==='cmp'?'cmp':'conv';$$('.tab').forEach(x=>x.classList.toggle('on',x.dataset.v===view));$$('.view').forEach(el=>el.classList.toggle('on',el.id==='v-'+view));
+function showTab(v){const view=v==='cmp'?'cmp':'conv';if(REAL&&INFO&&!RESTORING)setTimeout(saveSession,0);$$('.tab').forEach(x=>x.classList.toggle('on',x.dataset.v===view));$$('.view').forEach(el=>el.classList.toggle('on',el.id==='v-'+view));
   if(v==='play')setMode('play');else if(v==='ab')setMode('ab');if(view!=='conv')pPause();if(view==='cmp'||v==='conv')window.scrollTo(0,0);else if(matchMedia('(min-width:1301px) and (min-height:760px)').matches){$('.studio .center').scrollTop=0}else $('#stageCard').scrollIntoView({block:'start',behavior:'smooth'})}
 function setMode(m){$$('#stMode button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));$('#mPlay').hidden=m!=='play';$('#mAb').hidden=m!=='ab';$('#plName').hidden=m!=='play';$('#abInfo').hidden=m!=='ab';
   if(m==='ab'){pPause();fillAbFile();if(!AB.before){const q=selQ();if(REAL&&q&&q.fid&&!(q.bad&&!q.force))realAB(q,.5);else if(q&&!(q.bad&&!q.force))grabFrame(q,.5).then(c=>setBefore(c,q,`Probestelle 50 % · ${q.name}`));else demoBefore()}else applyAb()}}
@@ -1207,6 +1207,7 @@ function demo(){
   log('warn','KI-Prüflauf: „Download_abgebrochen.mp4“ ist defekt und wird übersprungen.');
 }
 function renderQ(){
+  if(REAL&&INFO&&!RESTORING)saveSession();
   const s=settings();
   $('#qsum').textContent=`${Q.length} Datei${Q.length===1?'':'en'}`;
   $('#bStart').disabled=!Q.length||RUN.on;
@@ -1993,7 +1994,7 @@ async function realScan(side,path){
   try{const {task}=await api('/api/scan',{path,recursive:$('#cSub').checked});
     const r=await waitTask(task,t=>{prog('scan'+side,'scanTxt'+side,'scanPct'+side,t.pct||0,t.phase||'Lese Ordner …');$('#cnt'+side).textContent=`lese … ${t.pct||0} %`});
     prog('scan'+side,'scanTxt'+side,'scanPct'+side,100,`Fertig: ${r.files.length.toLocaleString('de-DE')} Dateien`);setTimeout(()=>prog('scan'+side,null,null,null),2500);
-    ROOT[side]=r.root;SRC[side]=path;
+    ROOT[side]=r.root;SRC[side]=path;if(!RESTORING)setTimeout(saveSession,0);
     RAW[side]=r.files.map(f=>({u:++EUID,side,name:f.name,path:f.path,full:f.full,size:f.size,n:norm(f.name)}));
     autoCmp();
   }catch(err){prog('scan'+side,null,null,null);toast('Fehler: '+err.message);cntDir(side)}
@@ -2049,9 +2050,36 @@ async function realTmdb(){
   dbBusy=false;
 }
 /* ---------- Start im Programm ---------- */
+/* Sitzung merken: Dateiliste, Abgleich-Ordner, Schutz-Haken, Reiter – beim nächsten Start wieder da */
+var RESTORING=true;   // bis die alte Sitzung geladen ist, nichts überschreiben
+function saveSession(){
+  const ss={q:Q.filter(q=>q.fid&&q.path).map(q=>({p:q.path,done:q.state==='done',out:q.out||'',swap:!!q.swap})),sel:(selQ()||{}).path||'',
+    A:SRC.A,B:SRC.B,protA:$('#protA').checked,protB:$('#protB').checked,tab:$('#v-cmp').classList.contains('on')?'cmp':'conv'};
+  KV.set('bvc-session',JSON.stringify(ss));
+}
+async function restoreSession(){
+  let ss;try{ss=JSON.parse(KV.get('bvc-session')||'null')}catch(e){}if(!ss){RESTORING=false;return}
+  RESTORING=true;
+  try{
+    $('#protA').checked=!!ss.protA;$('#protB').checked=ss.protB!==false;
+    if(ss.q&&ss.q.length){
+      const r=await api('/api/add',{paths:ss.q.map(x=>x.p)}).catch(()=>({files:[]}));
+      const by={};r.files.forEach(e=>by[e.path]=e);let miss=0;
+      for(const x of ss.q){const e=by[x.p];if(!e){miss++;continue}if(Q.some(q=>q.fid===e.id))continue;const q=eToQ(e);if(x.done){q.state='done';q.prog=1;q.out=x.out}q.swap=x.swap;Q.push(q)}
+      const sel=Q.find(q=>q.path===ss.sel);selId=sel?sel.id:(Q[0]||{}).id||null;
+      renderQ();update();
+      log('',`Sitzung wiederhergestellt: ${Q.length} Datei(en)${miss?`, ${miss} nicht mehr gefunden`:''}.`);
+    }
+    if(ss.tab==='cmp')showTab('cmp');
+  }finally{RESTORING=false}
+  for(const x of ['A','B'])if(ss[x])await realScan(x,ss[x]);
+  saveSession();
+}
+['#protA','#protB'].forEach(id=>$(id).addEventListener('change',()=>{if(REAL&&INFO)saveSession();renderCmp()}));
+$('#bClear').addEventListener('click',()=>{if(REAL&&INFO)setTimeout(saveSession,0)});
 async function realInit(){
   document.body.classList.add('real');
-  try{INFO=await api('/api/info')}catch(err){toast('Programm-Kern nicht erreichbar: '+err.message);return}
+  try{INFO=await api('/api/info')}catch(err){RESTORING=false;toast('Programm-Kern nicht erreichbar: '+err.message);return}
   $('#verBadge').textContent='Version '+INFO.version+(INFO.gpus&&INFO.gpus.length?' · '+INFO.gpus.map(g=>g.name.replace(/\(TM\)|\(R\)|Graphics/gi,'').replace(/\s+/g,' ').trim()).join(' + '):'');
   if(!INFO.ffmpeg)toast('FFmpeg fehlt – bitte das Programm neu installieren.');
   if(INFO.config.tmdb)$('#cTmdb').value=INFO.config.tmdb;
@@ -2059,6 +2087,7 @@ async function realInit(){
   $('#oTopic').value=INFO.config.ntfy||('butchies-'+Math.random().toString(36).slice(2,10));
   if(!INFO.config.ntfy)api('/api/config',{ntfy:$('#oTopic').value}).catch(()=>{});
   markEnc();applyAuto();update();
+  await restoreSession();
   $('#codecTbl').innerHTML='<table><thead><tr><th>Format</th><th>Wiedergabe</th></tr></thead><tbody>'+CODECS.map(([n])=>`<tr><td>${n}</td><td style="color:var(--ok)">✓ ${/MKV|AVI|HEVC|MPEG-2|AC-3|DTS|High 10/.test(n)?'live über ffmpeg':'direkt'}</td></tr>`).join('')+'</tbody></table>';
 }
 function markEnc(){if(!INFO)return;[...$('#sEnc').options].forEach(o=>{const ok=INFO.hw[o.value]!==false;o.disabled=!ok;if(!ok&&!/nicht verfügbar/.test(o.text))o.text+=' – nicht verfügbar'});

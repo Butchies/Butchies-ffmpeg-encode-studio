@@ -35,6 +35,10 @@ FFmpeg mit allen Codecs ist dabei (inklusive VMAF-Messung und HDR). WebView2 wir
 **Neu in 1.1.3**
 - Das Programm **merkt sich jetzt alles** bis zum nächsten Start: Design, Start-Animation an/aus, Auto/Manuell-Schalter, eigene Einstellungen (Codec, Zielgröße, Zeitplan …) und eigene Vorlagen. Bisher ging das beim Neustart verloren
 
+**Neu in 1.1.5**
+- Das Programm merkt sich beim Beenden **alles**: Design, Einstellungen, die Dateiliste (inkl. schon fertiger Dateien) und die Abgleich-Ordner A/B samt Schutz-Häkchen. Beim nächsten Start ist alles wieder da, der Abgleich läuft automatisch neu
+- Dateien, die es inzwischen nicht mehr gibt, werden beim Start einfach weggelassen
+
 **Neu in 1.1.4**
 - Steht ein alter Codec im Dateinamen (x264, H.264, AVC …), **fragt die KI vor dem Start**, ob sie ihn passend ändern soll, z. B. `…BluRay.x264-DETAiLS` zu `…BluRay.x265-DETAiLS`. Wird das Bild verkleinert, passt sie auch die Auflösung an (1080p → 720p). Der restliche Name bleibt wie im Original
 - „Antwort merken“ oder unter „Ausgabe & Zeitplan“: immer fragen, immer anpassen oder nie
