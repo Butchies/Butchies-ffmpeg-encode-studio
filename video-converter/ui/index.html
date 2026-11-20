@@ -21,14 +21,15 @@
 @font-face{font-family:Manrope;src:url(fonts/manrope.woff2) format('woff2');font-weight:200 800;font-display:swap}
 
 /* Butchies Video Converter AI – Designs & Schriften wie Butchies Encode Studio / Butchies-Webseite (V2) */
-:root{--ok:#2fd38f;--bad:#ff6b7a;--warn:#ffcf5a;--info:#6fb3ff;--fh:Outfit,sans-serif;--fb:'DM Sans',system-ui,sans-serif;--fm:'JetBrains Mono',ui-monospace,Consolas,monospace;color-scheme:dark}
+:root{--ok:#2fd38f;--bad:#ff6b7a;--warn:#ffcf5a;--info:#6fb3ff;--ok2:#a9d86e;--orange:#f29a4e;--violet:#c79bff;--fh:Outfit,sans-serif;--fb:'DM Sans',system-ui,sans-serif;--fm:'JetBrains Mono',ui-monospace,Consolas,monospace;color-scheme:dark}
 :root,[data-theme=neon]{--a:#a46bff;--b:#ff6fc4;--bg:#0b0614;--bg2:#160c26;--panel:rgba(255,255,255,.055);--panel2:rgba(255,255,255,.09);--line:rgba(255,255,255,.1);--text:#f6f1ff;--muted:#b3a6c9;--glow:rgba(164,107,255,.45);--on:#fff}
 [data-theme=ocean]{--a:#38bdf8;--b:#22d3ee;--bg:#03101a;--bg2:#06202e;--glow:rgba(56,189,248,.42);--muted:#9cb9c9;--on:#03101a}
 [data-theme=sunset]{--a:#ff7a45;--b:#ff4f9a;--bg:#140708;--bg2:#2a0f14;--glow:rgba(255,122,69,.42);--muted:#cfa9a6;--on:#1a0706}
 [data-theme=emerald]{--a:#2fd38f;--b:#a3e635;--bg:#04110c;--bg2:#0a2318;--glow:rgba(47,211,143,.4);--muted:#a3c4b5;--on:#04110c}
 [data-theme=gold]{--a:#f5b544;--b:#ffdf8a;--bg:#0d0a05;--bg2:#1f1708;--glow:rgba(245,181,68,.4);--muted:#c9b991;--on:#1a1205}
 [data-theme=mono]{--a:#e5e5e5;--b:#9ca3af;--bg:#0a0a0a;--bg2:#171717;--glow:rgba(255,255,255,.22);--muted:#a3a3a3;--on:#0a0a0a}
-[data-theme=light]{--a:#7c3aed;--b:#db2777;--bg:#f6f2fb;--bg2:#ece3f8;--panel:rgba(30,10,60,.05);--panel2:rgba(30,10,60,.08);--line:rgba(30,10,60,.12);--text:#1d1430;--muted:#5f5374;--glow:rgba(124,58,237,.28);--on:#fff;color-scheme:light}
+[data-theme=light]{--a:#7c3aed;--b:#db2777;--bg:#f6f2fb;--bg2:#ece3f8;--panel:rgba(30,10,60,.05);--panel2:rgba(30,10,60,.08);--line:rgba(30,10,60,.12);--text:#1d1430;--muted:#5f5374;--glow:rgba(124,58,237,.28);--on:#fff;color-scheme:light;
+  --ok:#0f8a55;--ok2:#4d7c0f;--warn:#a86400;--orange:#c2410c;--bad:#c62839;--info:#1d6fc2;--violet:#7c3aed}
 [data-skin=club]{--fh:Unbounded,var(--fb)}
 [data-skin=wellen]{--fh:Quicksand,sans-serif;--fb:Quicksand,system-ui,sans-serif}
 [data-skin=magazin]{--fh:'Playfair Display',Georgia,serif}
@@ -167,6 +168,33 @@ body:not(.real) .real-only{display:none!important}
 .anaMini{display:none;font:600 13px var(--fb);color:var(--muted)}.anaMini b{font-family:var(--fh)}
 #anaCard.shut .anaMini{display:block}
 .card h2 .sub{font:500 12px var(--fb);color:var(--muted);margin-left:auto;text-align:right;letter-spacing:0}
+.dz-empty{display:grid;place-items:center;gap:4px;width:100%}
+.drop.loaded{border-style:solid;place-items:stretch;text-align:left;position:relative;padding:16px}
+.dz-info{display:grid;gap:10px;width:100%;min-width:0}
+.drop.loaded .dz-empty,.drop:not(.loaded) .dz-info{display:none}
+.fi{width:100%;text-align:left;display:grid;gap:10px}.fi:empty{display:none}
+.dz-empty .fi{margin-top:10px}
+.fi .rec{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.fi .rec button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:99px;padding:5px 11px;font:600 12px var(--fb);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fi .rec button:hover{border-color:var(--a)}
+.drv{display:grid;gap:6px;padding:10px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-size:12.5px}
+.drv .t{display:flex;justify-content:space-between;gap:10px;color:var(--muted)}.drv .t b{color:var(--text);font:700 13px var(--fb);white-space:nowrap}
+.dbar{height:9px;border-radius:99px;background:var(--panel2);overflow:hidden;display:flex}.dbar i{display:block;height:100%}
+.dstats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.dstats div{padding:9px 11px;border-radius:12px;background:var(--panel);border:1px solid var(--line);min-width:0}
+.dstats small{display:block;color:var(--muted);font-size:11.5px}.dstats b{font:800 17px var(--fh)}
+.leg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted)}.leg span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--c);margin-right:5px}
+.dsave,.dodd{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;font-size:13px}
+.dsave{border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);background:color-mix(in srgb,var(--ok) 9%,transparent)}.dsave b{color:var(--ok)}
+.dodd{border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);background:color-mix(in srgb,var(--warn) 9%,transparent)}.dodd b{color:var(--warn)}
+.dsave .btn,.dodd .btn{margin-left:auto;flex:none}
+.dok{font-size:12.5px;color:var(--ok)}
+.dtwo{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12.5px}.dtwo div{padding:9px 11px;border-radius:12px;background:var(--panel);border:1px solid var(--line);min-width:0;overflow-wrap:anywhere}.dtwo small{color:var(--muted);display:block;font-size:11.5px}
+.dhead{display:flex;align-items:center;gap:8px}.dhead b{font:800 15px var(--fh);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dimenu{position:absolute;right:16px;top:58px;z-index:20;display:grid;gap:8px;padding:14px 16px;border-radius:14px;background:var(--bg2);border:1px solid var(--line);box-shadow:0 14px 40px rgba(0,0,0,.35);font-size:13px}
+.dimenu[hidden]{display:none}
+@media(max-width:1300px){.dstats{grid-template-columns:repeat(2,1fr)}.dtwo{grid-template-columns:1fr}}
+.pgline .pstop{margin-left:10px;padding:3px 10px;font-size:11.5px}
 .drop{display:grid;place-items:center;gap:4px;padding:22px 16px;text-align:center;border-radius:20px;border:2px dashed color-mix(in srgb,var(--a) 55%,transparent);background:linear-gradient(135deg,color-mix(in srgb,var(--a) 10%,transparent),transparent);transition:.2s}
 .drop.hot,.drop:hover{border-color:var(--b);background:linear-gradient(135deg,color-mix(in srgb,var(--a) 20%,transparent),color-mix(in srgb,var(--b) 8%,transparent))}
 .drop b{font:800 17px var(--fh)}
@@ -648,17 +676,21 @@ dialog[open]{animation:dlg .3s ease}
 <section class="view" id="v-cmp">
 <div class="cmpgrid">
   <div class="card"><h2>📁 Ordner A <span class="sub" id="cntA">leer</span></h2>
-    <div class="drop" id="dropA"><b>Ordner A hierher ziehen</b><p>z. B. neue Downloads</p>
+    <div class="drop" id="dropA"><div class="dz-empty"><b>Ordner A hierher ziehen</b><p>z. B. neue Downloads</p>
       <div class="row" style="justify-content:center"><button class="btn" data-pick="A">📁 Ordner wählen</button><button class="btn demo-only" data-demo="A">✨ Demo</button></div>
+      <div class="fi" id="emptyA"></div></div>
+      <div class="dz-info" id="infoA"></div>
       <input type="file" id="iA" webkitdirectory multiple hidden></div>
-    <div id="scanA" hidden style="margin-top:12px"><div class="pgline"><small id="scanTxtA">Lese Ordner …</small><b id="scanPctA">0 %</b></div><div class="segbar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+    <div id="scanA" hidden style="margin-top:12px"><div class="pgline"><small id="scanTxtA">Lese Ordner …</small><b id="scanPctA">0 %</b><button class="btn sm pstop" title="Abbrechen">⏹ Abbrechen</button></div><div class="segbar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
     <label class="chk" style="margin-top:10px"><input type="checkbox" id="protA"> 🛡 Ordner schützen (Löschen nur in einen Papierkorb-Ordner)</label>
   </div>
   <div class="card"><h2>📁 Ordner B <span class="sub" id="cntB">leer</span></h2>
-    <div class="drop" id="dropB"><b>Ordner B hierher ziehen</b><p>z. B. NAS-Filmordner</p>
+    <div class="drop" id="dropB"><div class="dz-empty"><b>Ordner B hierher ziehen</b><p>z. B. NAS-Filmordner</p>
       <div class="row" style="justify-content:center"><button class="btn" data-pick="B">📁 Ordner wählen</button><button class="btn demo-only" data-demo="B">✨ Demo</button></div>
+      <div class="fi" id="emptyB"></div></div>
+      <div class="dz-info" id="infoB"></div>
       <input type="file" id="iB" webkitdirectory multiple hidden></div>
-    <div id="scanB" hidden style="margin-top:12px"><div class="pgline"><small id="scanTxtB">Lese Ordner …</small><b id="scanPctB">0 %</b></div><div class="segbar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+    <div id="scanB" hidden style="margin-top:12px"><div class="pgline"><small id="scanTxtB">Lese Ordner …</small><b id="scanPctB">0 %</b><button class="btn sm pstop" title="Abbrechen">⏹ Abbrechen</button></div><div class="segbar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
     <label class="chk" style="margin-top:10px"><input type="checkbox" id="protB" checked> 🛡 NAS / Archiv schützen (Löschen nur in einen Papierkorb-Ordner)</label>
   </div>
 </div>
@@ -687,7 +719,7 @@ dialog[open]{animation:dlg .3s ease}
       <div class="f"><label>Ähnlich ab (%)</label><input type="number" id="cTh" value="60" min="30" max="99"></div>
       <div class="f"><label>Dateien</label><label class="chk" style="min-height:42px"><input type="checkbox" id="cVid" checked> nur Videodateien</label></div>
       <div class="f full real-only"><label class="chk"><input type="checkbox" id="cSub" checked> Unterordner mitlesen (ein Ordner, der im anderen liegt, wird dabei immer ausgelassen)</label></div>
-      <div class="f full"><label class="chk"><input type="checkbox" id="cImg" checked> 🖼 Bild-Abgleich: gleicher Film trotz anderem Namen (vergleicht Standbilder)</label></div>
+      <div class="f full"><label class="chk"><input type="checkbox" id="cImg"> 🔬 Tiefsuche (Bild-Abgleich): findet den gleichen Film trotz anderem Namen – vergleicht Standbilder, dauert deutlich länger</label></div>
       <div class="f full"><label class="chk"><input type="checkbox" id="cDb" checked> 🎬 Filmdatenbank: Titel + Jahr erkennen</label></div>
       <div class="f full real-only"><label>TMDB-Schlüssel (freiwillig, für deutsche Original-Titel)</label><input type="text" id="cTmdb" placeholder="kostenlos auf themoviedb.org → Einstellungen → API"><div class="hint" style="margin:0">Ohne Schlüssel liest die KI Titel und Jahr aus dem Dateinamen.</div></div>
     </div></div></div>
@@ -697,7 +729,7 @@ dialog[open]{animation:dlg .3s ease}
     <button class="btn" id="bHash" disabled title="Liest Anfang + Ende jeder Datei und vergleicht Prüfsummen">🔐 Inhalt prüfen (Hash)</button>
     <button class="btn" id="bRen" title="Benennt erkannte Filme einheitlich: Titel (Jahr).mkv">✏️ Einheitlich umbenennen</button>
   </div>
-  <div id="cmpProg" hidden style="margin-top:12px"><div class="pgline"><small id="cmpProgTxt"></small><b id="cmpProgPct">0 %</b></div><div class="segbar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+  <div id="cmpProg" hidden style="margin-top:12px"><div class="pgline"><small id="cmpProgTxt"></small><b id="cmpProgPct">0 %</b><button class="btn sm pstop" title="Abbrechen">⏹ Abbrechen</button></div><div class="segbar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
   <div class="res" id="resTabs"></div>
   <div class="row" style="margin-bottom:8px">
     <button class="btn sm" id="bAuto">✨ KI: Doppelte zum Löschen vormerken</button>
@@ -1001,7 +1033,7 @@ function updSums(){
 const PROBE={};let probeRun=null,probeTimer=null;
 const hstr=t=>{let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))|0;return h};
 const pkey=(q,a)=>q.id+'|'+hstr(a.cmd+a.vk+a.outW);
-function vmLabel(v){return v>=95?['praktisch wie das Original','var(--ok)']:v>=90?['sehr gut – kaum Unterschied','var(--ok)']:v>=80?['gut – kleine Verluste','#a9d86e']:v>=70?['sichtbare Verluste','var(--warn)']:['deutlich schlechter','var(--bad)']}
+function vmLabel(v){return v>=95?['praktisch wie das Original','var(--ok)']:v>=90?['sehr gut – kaum Unterschied','var(--ok)']:v>=80?['gut – kleine Verluste','var(--ok2)']:v>=70?['sichtbare Verluste','var(--warn)']:['deutlich schlechter','var(--bad)']}
 function sceneCanvas(q,frac){const w=1920,h=Math.round(1920*(q.h||1080)/(q.w||1920));const c=document.createElement('canvas');c.width=w;c.height=h;drawScene(c.getContext('2d'),w,h,(q.dur||600)*frac,q.name);return c}
 function grabFrame(q,frac){if(REAL&&q.fid)return loadImg(`/api/frame?id=${q.fid}&t=${(frac*(q.dur||0)).toFixed(2)}&w=1920`).catch(()=>sceneCanvas(q,frac));return new Promise(res=>{
   if(!q.file){res(sceneCanvas(q,frac));return}
@@ -1051,7 +1083,7 @@ function runProbe(q,a){
 const interp=(pts,x,log)=>{const f=v=>log?Math.log(v):v;if(x<=pts[0][0])return pts[0][1];for(let i=1;i<pts.length;i++){if(x<=pts[i][0]){const a=pts[i-1],b=pts[i],t=(f(x)-f(a[0]))/(f(b[0])-f(a[0]));return a[1]+(b[1]-a[1])*t}}return pts[pts.length-1][1]};
 const BPP=[[.008,6],[.015,18],[.025,34],[.035,46],[.05,60],[.07,72],[.1,84],[.15,93],[.25,98]];
 const CRFT=[[12,99],[14,98],[18,95],[20,91],[23,84],[26,74],[28,66],[32,48],[38,25],[45,10],[51,4]];
-const label=s=>s>=90?['Exzellent','var(--ok)']:s>=80?['Sehr gut','var(--ok)']:s>=70?['Gut','#a9d86e']:s>=55?['Mittel','var(--warn)']:s>=40?['Schwach','#f29a4e']:['Schlecht','var(--bad)'];
+const label=s=>s>=90?['Exzellent','var(--ok)']:s>=80?['Sehr gut','var(--ok)']:s>=70?['Gut','var(--ok2)']:s>=55?['Mittel','var(--warn)']:s>=40?['Schwach','var(--orange)']:['Schlecht','var(--bad)'];
 const P_DOWN=22,P_EXP=.25;const downPen=(srcW,w)=>srcW>w?P_DOWN*Math.log2(srcW/w):0;
 function bppScore(vk,w,h,fps,enc,bits){
   const px=w*h, eff=EFF[enc]*(bits>8?.95:1);
@@ -1412,7 +1444,72 @@ function sim(x,y){
   return Math.min(1,s);
 }
 let EUID=0; const MK=new Set(); let TRASH=[];
-function cntDir(side,demo){$('#cnt'+side).textContent=DIR[side].length?`${DIR[side].length} Dateien · ${fmtMB(DIR[side].reduce((s,x)=>s+x.size,0)/1048576)}${demo?' (Demo)':''}`:'leer'}
+function cntDir(side,demo){$('#cnt'+side).textContent=DIR[side].length?`${DIR[side].length} Dateien · ${fmtSz(DIR[side].reduce((s,x)=>s+x.size,0))}${demo?' (Demo)':''}`:'leer';try{renderDirInfo(side)}catch(e){console.error(e)}}
+/* ---------- Ordner-Infos (A und B) ---------- */
+const fmtSz=b=>{if(b==null)return '–';const g=b/1073741824;return g>=1000?(g/1024).toFixed(2).replace('.',',')+' TB':g>=1?g.toFixed(g>=100?0:2).replace('.',',')+' GB':b>=1048576?Math.round(b/1048576).toLocaleString('de-DE')+' MB':b>0?'< 1 MB':'0 Byte'};
+const DIO_KEYS=[['num','📊 Zahlen (Videos, Größe, Unterordner, frei)'],['codec','🎞 Codecs'],['res','📐 Auflösungen'],['save','💾 Sparpotenzial'],['odd','⚠️ Auffällige Dateien'],['new','🆕 Neueste / 🐘 größte Datei']];
+let DIOPT={num:true,codec:true,res:true,save:true,odd:true,new:true};try{Object.assign(DIOPT,JSON.parse(KV.get('bvc-dirinfo')||'{}'))}catch(e){}
+const META={A:null,B:null};
+let RECENT=[];try{RECENT=JSON.parse(KV.get('bvc-recent')||'[]')||[]}catch(e){}
+function addRecent(p){RECENT=[p,...RECENT.filter(x=>x!==p)].slice(0,6);KV.set('bvc-recent',JSON.stringify(RECENT));loadSpace()}
+let SPACE=[];
+async function loadSpace(){if(!REAL)return;try{SPACE=(await api('/api/space',{paths:RECENT})).space||[]}catch(e){SPACE=[]}['A','B'].forEach(x=>{if(!DIR[x].length)renderDirInfo(x)})}
+const codecOf=n=>/x265|h\.?265|hevc/i.test(n)?'h265':/x264|h\.?264|\bavc\b/i.test(n)?'h264':/\bav1\b/i.test(n)?'av1':/xvid|divx|mpeg-?2/i.test(n)?'old':'unk';
+const resOf=n=>/2160p|\b4k\b|\buhd\b/i.test(n)?'4k':/1080[pi]/i.test(n)?'1080':/720p/i.test(n)?'720':/576p|480p|dvdrip|\bsd\b/i.test(n)?'sd':'unk';
+const ODD_PART=/\.(part|crdownload|!qb|tmp|partial)$/i;
+const uncRoot=p=>{const m=/^(\\\\[^\\]+\\[^\\]+)/.exec(p||'');return m?m[1]:null};
+function drvBox(icon,label,sp){const used=sp.total?Math.max(0,Math.min(1,1-sp.free/sp.total)):0;
+  return `<div class="drv"><div class="t"><span>${icon} ${esc(label)}</span><b>${fmtSz(sp.free)} frei von ${fmtSz(sp.total)}</b></div><div class="dbar"><i style="width:${(used*100).toFixed(1)}%;background:${used>.9?'var(--bad)':'linear-gradient(90deg,var(--a),var(--b))'}"></i></div></div>`}
+const KIND={nas:['🌐','NAS / Netzwerk'],usb:['🔌','USB-Laufwerk'],local:['💽','lokale Festplatte'],cd:['💿','CD/DVD']};
+function barBox(title,parts,total,right){const tot=parts.reduce((s,p)=>s+p[1],0)||1;
+  return `<div class="drv"><div class="t"><span>${title}</span><b>${right||''}</b></div><div class="dbar" style="height:12px">${parts.filter(p=>p[1]).map(p=>`<i title="${esc(p[0])}: ${p[1]}" style="width:${p[1]/tot*100}%;background:${p[2]}"></i>`).join('')}</div>
+   <div class="leg">${parts.filter(p=>p[1]).map(p=>`<span style="--c:${p[2]}">${esc(p[0])}: ${p[1].toLocaleString('de-DE')}</span>`).join('')}</div></div>`}
+function oddList(L){const vids=L.filter(x=>VID.test(x.name));
+  const zero=L.filter(x=>x.size===0),sample=L.filter(x=>x.size>0&&/sample/i.test(x.name)),part=L.filter(x=>x.size>0&&ODD_PART.test(x.name)),
+        small=vids.filter(x=>x.size>0&&x.size<50*1048576&&!/sample/i.test(x.name));
+  return {zero,sample,part,small,all:[...new Set([...zero,...part,...small,...sample])]}}
+function renderDirInfo(side){
+  const drop=$('#drop'+side),box=$('#info'+side),em=$('#empty'+side);if(!drop||!box)return;
+  const L=DIR[side]||[];drop.classList.toggle('loaded',!!L.length);
+  if(!L.length){box.innerHTML='';
+    if(!REAL||!INFO){em.innerHTML='';return}
+    const rec=RECENT.length?`<div class="rec"><small style="width:100%;text-align:center;color:var(--muted)">Zuletzt benutzt:</small>${RECENT.slice(0,4).map((p,i)=>`<button data-rec="${i}" title="${esc(p)}">🕘 ${esc(p.length>42?'…'+p.slice(-40):p)}</button>`).join('')}</div>`:'';
+    const drv=(INFO.disks||[]).map(d=>drvBox('💽',d.drive+'\\ (lokale Festplatte)',d));
+    const seen=new Set();SPACE.forEach(sp=>{if(sp.kind==='local'||sp.free==null)return;const r=uncRoot(sp.path)||sp.path.slice(0,3);if(seen.has(r))return;seen.add(r);const k=KIND[sp.kind]||KIND.local;drv.push(drvBox(k[0],r+' ('+k[1]+')',sp))});
+    em.innerHTML=rec+drv.join('');
+    em.querySelectorAll('[data-rec]').forEach(b=>b.onclick=e=>{e.stopPropagation();realScan(side,RECENT[+b.dataset.rec])});
+    return}
+  const vids=L.filter(x=>VID.test(x.name)),all=L.reduce((s,x)=>s+x.size,0),M=META[side]||{},sp=M.space;
+  const dirs=REAL&&M.dirs!=null?M.dirs:new Set(L.map(x=>x.path.split('/').slice(0,-1).join('/'))).size;
+  const where=REAL?(ROOT[side]||SRC[side]||''):(L[0].path.split('/')[0]||'Demo');const k=KIND[(sp&&sp.kind)||'local']||KIND.local;
+  const O=DIOPT,h=[];
+  h.push(`<div class="dhead"><b title="${esc(where)}">${REAL?k[0]:'📁'} ${esc(where)}</b><button class="btn sm" data-dimenu>⚙ Anzeige</button><button class="btn sm" data-other>📁 Anderer Ordner</button></div>
+   <div class="dimenu" hidden><b style="font:800 14px var(--fh)">Was soll angezeigt werden?</b>${DIO_KEYS.map(([key,t])=>`<label class="chk"><input type="checkbox" data-dio="${key}" ${O[key]?'checked':''}> ${t}</label>`).join('')}<small style="color:var(--muted)">Gilt für Ordner A und B · wird gespeichert</small></div>`);
+  if(O.num)h.push(`<div class="dstats"><div><small>Videos</small><b>${vids.length.toLocaleString('de-DE')}</b></div><div><small>Gesamtgröße</small><b>${fmtSz(all)}</b></div><div><small>Unterordner</small><b>${dirs.toLocaleString('de-DE')}</b></div><div><small>Laufwerk frei</small><b>${sp&&sp.free!=null?fmtSz(sp.free):'–'}</b></div></div>`);
+  if(O.codec&&vids.length){const c={h264:0,h265:0,av1:0,old:0,unk:0};vids.forEach(x=>c[codecOf(x.name)]++);
+    h.push(barBox('🎞 Codecs (aus dem Dateinamen)',[['H.264 / x264',c.h264,'var(--orange)'],['H.265 / x265',c.h265,'var(--ok)'],['AV1',c.av1,'var(--info)'],['alt (XviD/DivX/MPEG-2)',c.old,'var(--bad)'],['unbekannt',c.unk,'#9ca3af']],0,vids.length.toLocaleString('de-DE')+' Dateien'))}
+  if(O.res&&vids.length){const c={'4k':0,'1080':0,'720':0,sd:0,unk:0};vids.forEach(x=>c[resOf(x.name)]++);
+    h.push(barBox('📐 Auflösungen (aus dem Dateinamen)',[['4K',c['4k'],'var(--b)'],['1080p',c['1080'],'var(--a)'],['720p',c['720'],'var(--info)'],['SD',c.sd,'var(--violet)'],['unbekannt',c.unk,'#9ca3af']]))}
+  if(O.save&&vids.length){const old=vids.filter(x=>['h264','old'].includes(codecOf(x.name))),sz=old.reduce((s,x)=>s+x.size,0);
+    h.push(old.length?`<div class="dsave">💾 <span>Alle <b>${old.length.toLocaleString('de-DE')} H.264-/Alt-Filme</b> zu H.265 umwandeln spart etwa <b>${fmtSz(sz*.45)}</b> (≈ 45 %).</span><button class="btn sm pri" data-saveq>In Warteschlange</button></div>`
+      :`<div class="dok">✓ Kein H.264 erkannt – hier ist schon alles sparsam.</div>`)}
+  if(O.odd){const od=oddList(L);const p=[];if(od.zero.length)p.push(od.zero.length+' × 0 Byte');if(od.part.length)p.push(od.part.length+' × unfertiger Download');if(od.small.length)p.push(od.small.length+' × sehr klein (< 50 MB)');if(od.sample.length)p.push(od.sample.length+' × „sample“');
+    h.push(od.all.length?`<div class="dodd">⚠️ <span><b>${od.all.length} auffällige Datei${od.all.length>1?'en':''}:</b> ${p.join(' · ')}</span><button class="btn sm" data-odd>Anzeigen</button></div>`:`<div class="dok">✓ Keine auffälligen Dateien.</div>`)}
+  if(O.new&&vids.length){const big=vids.reduce((a,x)=>x.size>a.size?x:a,vids[0]);const wm=vids.filter(x=>x.mt);const nw=wm.length?wm.reduce((a,x)=>x.mt>a.mt?x:a,wm[0]):null;
+    h.push(`<div class="dtwo">${nw?`<div><small>🆕 Neueste Datei · ${new Date(nw.mt*1000).toLocaleDateString('de-DE')}</small>${esc(nw.name)}</div>`:''}<div><small>🐘 Größte Datei · ${fmtSz(big.size)}</small>${esc(big.name)}</div></div>`)}
+  box.innerHTML=h.join('');
+  const menu=box.querySelector('.dimenu');
+  box.querySelector('[data-dimenu]').onclick=e=>{e.stopPropagation();const open=menu.hidden;$$('.dimenu').forEach(m=>m.hidden=true);menu.hidden=!open};
+  menu.onclick=e=>e.stopPropagation();
+  menu.querySelectorAll('[data-dio]').forEach(c=>c.onchange=()=>{DIOPT[c.dataset.dio]=c.checked;KV.set('bvc-dirinfo',JSON.stringify(DIOPT));['A','B'].forEach(x=>{renderDirInfo(x)});const m=$('#info'+side+' .dimenu');if(m)m.hidden=false});
+  box.querySelector('[data-other]').onclick=async e=>{e.stopPropagation();if(!REAL)return $('#i'+side).click();try{const r=await api('/api/pick',{kind:'folder',start:ROOT[side]||''});if(r.paths[0])realScan(side,r.paths[0])}catch(err){toast(err.message)}};
+  const sq=box.querySelector('[data-saveq]');if(sq)sq.onclick=e=>{e.stopPropagation();const l=vids.filter(x=>['h264','old'].includes(codecOf(x.name))&&!x.queued);if(!l.length)return toast('Schon alle in der Warteschlange.');
+    ask(`💾 ${l.length} Dateien in die Warteschlange?`,`<p>Alle H.264-/Alt-Filme aus Ordner ${side} werden geprüft und in den Konverter gelegt. Bei vielen Dateien dauert die Prüfung einen Moment.</p>`,[{t:'Abbrechen'},{t:'In Warteschlange',cls:'pri',fn:()=>procEntries(l)}])};
+  const ob=box.querySelector('[data-odd]');if(ob)ob.onclick=e=>{e.stopPropagation();const od=oddList(L);const why=x=>x.size===0?'0 Byte':ODD_PART.test(x.name)?'unfertiger Download':/sample/i.test(x.name)?'Musterdatei':'sehr klein';
+    ask(`⚠️ ${od.all.length} auffällige Dateien in Ordner ${side}`,`<div style="max-height:46vh;overflow:auto;display:grid;gap:4px">${od.all.slice(0,300).map(x=>`<div>• <b style="color:var(--text)">${esc(x.name)}</b> <span style="color:var(--muted)">(${why(x)}, ${fmtSz(x.size)}) · ${esc(x.path)}</span></div>`).join('')}</div>${od.all.length>300?`<p>… und ${od.all.length-300} weitere</p>`:''}`,
+      [{t:'Schließen'},{t:'🗑 Alle löschen …',fn:()=>askDelete(od.all)}])};
+}
+document.addEventListener('click',()=>$$('.dimenu').forEach(m=>m.hidden=true));
 function setDir(side,list){
   DIR[side]=list.map(it=>{const f=it.file||it,p=it.path||f.webkitRelativePath||f.name;return {u:++EUID,side,name:f.name,path:p,size:f.size,file:f,n:norm(f.name)}});
   cntDir(side); autoCmp();
@@ -1452,13 +1549,13 @@ function compare(){
   for(const x of [...MK])if(!DIR[x.side].includes(x))MK.delete(x);
   renderCmp();
 }
-function scPill(s){const v=Math.round(s*100);const c=v>=90?'var(--ok)':v>=70?'#a9d86e':v>=50?'var(--warn)':'var(--bad)';return `<span class="score" style="background:${c}22;color:${c}">${v} %</span>`}
+function scPill(s){const v=Math.round(s*100);const c=v>=90?'var(--ok)':v>=70?'var(--ok2)':v>=50?'var(--warn)':'var(--bad)';return `<span class="score" style="background:color-mix(in srgb,${c} 15%,transparent);color:${c}">${v} %</span>`}
 function why(r){if(!r.a||!r.b)return '';const t=[];const a=r.a.n,b=r.b.n;
   if(a.year&&b.year&&a.year!==b.year)t.push(`anderes Jahr (${a.year}/${b.year})`);
   if((a.ep||b.ep)&&a.ep!==b.ep)t.push(`andere Folge (${a.ep||'–'}/${b.ep||'–'})`);
   if(r.a.size&&r.b.size){const d=r.a.size/r.b.size;if(d>1.15)t.push('A ist größer – evtl. bessere Version');else if(d<.87)t.push('B ist größer – evtl. bessere Version');else t.push('ähnliche Größe')}
   if(r.hash)t.push(r.hash);return t.join(' · ')}
-const ST={same:['✓ Gleich','var(--ok)'],similar:['≈ Ähnlich','var(--warn)'],onlyA:['Nur in A','var(--info)'],onlyB:['Nur in B','#c79bff']};
+const ST={same:['✓ Gleich','var(--ok)'],similar:['≈ Ähnlich','var(--warn)'],onlyA:['Nur in A','var(--info)'],onlyB:['Nur in B','var(--violet)']};
 function fileCell(x){
   if(!x)return '<span style="color:var(--mut)">–</span>';
   return `<div class="fc"><input type="checkbox" data-mk="${x.u}" ${MK.has(x)?'checked':''} title="Markieren"><div style="flex:1;min-width:0">${esc(x.name)}${CS().db&&dbTitle(x.name)?`<br><span class="dbtag">🎬 ${esc(dbTitle(x.name))}</span>`:''}${prot(x.side)?' <span class="shield" title="geschützt">🛡</span>':''}<div class="p">${esc(x.path)} · ${fmtMB(x.size/1048576)}${x.queued?' · <span style="color:var(--acc)">⚙ in Warteschlange</span>':''}</div></div>
@@ -1477,7 +1574,7 @@ function renderCmp(){
   $('#cmpTbl').innerHTML=`<table><thead><tr><th style="width:42%">📁 Ordner A</th><th style="width:16%">Status</th><th style="width:42%">📁 Ordner B</th></tr></thead><tbody>${
     rows.map(r=>{const [lb,c]=ST[r.type];const near=r.type==='onlyA'&&r.b&&r.s>=.3?`<div class="st">nächster Treffer: ${esc(r.b.name)} (${Math.round(r.s*100)} %)</div>`:'';
       const mk=(r.a&&MK.has(r.a))||(r.type!=='onlyA'&&r.b&&MK.has(r.b));
-      return `<tr class="${mk?'mk':''}"><td>${fileCell(r.a)}</td><td><span class="score" style="background:${c}22;color:${c}">${lb}</span>${r.a&&r.b&&r.type!=='onlyA'?' '+scPill(r.s):''}${r.img?'<br><span class="imgtag">🖼 gleiche Bilder, anderer Name</span>':''}${r.db?'<br><span class="imgtag">🎬 laut Filmdatenbank derselbe Film</span>':''}<div class="st">${why(r.type==='onlyA'?{}:r)}</div>${near}</td><td>${fileCell(r.type==='onlyA'?null:r.b)}</td></tr>`}).join('')}</tbody></table>`;
+      return `<tr class="${mk?'mk':''}"><td>${fileCell(r.a)}</td><td><span class="score" style="background:color-mix(in srgb,${c} 15%,transparent);color:${c}">${lb}</span>${r.a&&r.b&&r.type!=='onlyA'?' '+scPill(r.s):''}${r.img?'<br><span class="imgtag">🖼 gleiche Bilder, anderer Name</span>':''}${r.db?'<br><span class="imgtag">🎬 laut Filmdatenbank derselbe Film</span>':''}<div class="st">${why(r.type==='onlyA'?{}:r)}</div>${near}</td><td>${fileCell(r.type==='onlyA'?null:r.b)}</td></tr>`}).join('')}</tbody></table>`;
   $$('[data-mk]').forEach(c=>c.onchange=()=>{const x=entry(c.dataset.mk);if(!x)return;c.checked?MK.add(x):MK.delete(x);renderCmp()});
   $$('[data-del]').forEach(b=>b.onclick=()=>{const x=entry(b.dataset.del);if(x)askDelete([x])});
   $$('[data-proc]').forEach(b=>b.onclick=()=>{const x=entry(b.dataset.proc);if(x)procEntries([x])});
@@ -1551,8 +1648,8 @@ function heurTitle(name){
 }
 function dbTitle(name){if(typeof DBC!=='undefined'&&DBC[name])return DBC[name];const h=heurTitle(name);if(!h)return null;return h.ep?`${h.t} - ${h.ep}`:`${h.t} (${h.y})`}
 const CS=()=>({vid:$('#cVid').checked,th:(+$('#cTh').value||60)/100,img:$('#cImg').checked,db:$('#cDb').checked});
-function applyCmpAuto(){if(AUTO.cmp){$('#cSub').checked=true;$('#cVid').checked=true;$('#cTh').value=60;$('#cImg').checked=true;$('#cDb').checked=true}
-  const c=CS();const e=$('#sum-cmp');if(e)e.textContent=(AUTO.cmp?'KI: ':'Manuell: ')+['Name',c.img?'Bild':null,c.db?'Filmdatenbank':null].filter(Boolean).join(' + ')+` · ähnlich ab ${Math.round(c.th*100)} %${c.vid?' · nur Videos':''}`}
+function applyCmpAuto(){if(AUTO.cmp){$('#cSub').checked=true;$('#cVid').checked=true;$('#cTh').value=60;$('#cImg').checked=false;$('#cDb').checked=true}
+  const c=CS();const e=$('#sum-cmp');if(e)e.textContent=(AUTO.cmp?'KI: ':'Manuell: ')+['Name',c.img?'Tiefsuche (Bild)':null,c.db?'Filmdatenbank':null].filter(Boolean).join(' + ')+` · ähnlich ab ${Math.round(c.th*100)} %${c.vid?' · nur Videos':''}`}
 ['#cImg','#cDb'].forEach(id=>$(id).onchange=()=>autoCmp());
 /* Bild-Fingerabdruck */
 const DEMO_FP={'Aufnahme_0815_unbekannt.mkv':'dune2021','Dune (2021).mkv':'dune2021'};
@@ -1767,7 +1864,7 @@ function psnr(c1,c2){const w=480,h=Math.round(480*c1.height/c1.width),a=document
 function genAfter(){
   const B=AB.before;if(!B)return;
   const cb=$('#abB'),ca=$('#abA');cb.width=ca.width=B.width;cb.height=ca.height=B.height;cb.getContext('2d').drawImage(B,0,0);
-  const fin=(info)=>{const p=psnr(B,ca);const pl=p>=42?['kaum sichtbar','var(--ok)']:p>=37?['gut','#a9d86e']:p>=32?['sichtbar','var(--warn)']:['deutlich','var(--bad)'];
+  const fin=(info)=>{const p=psnr(B,ca);const pl=p>=42?['kaum sichtbar','var(--ok)']:p>=37?['gut','var(--ok2)']:p>=32?['sichtbar','var(--warn)']:['deutlich','var(--bad)'];
     $('#tagB').innerHTML=`VORHER<br><b>${info.bW}×${info.bH}</b> · ${info.bS}`;$('#tagA').innerHTML=`NACHHER<br><b>${info.aW}×${info.aH}</b> · ${info.aS}`;
     $('#abStats').innerHTML=`<div><small>Vorher</small><b>${info.bW}×${info.bH} · ${info.bS}</b></div><div><small>Nachher</small><b>${info.aW}×${info.aH} · ${info.aS}</b></div><div><small>${info.l3}</small><b>${info.v3}</b></div><div><small>Bildabweichung (PSNR)</small><b style="color:${pl[1]}">${p>=99?'∞':p.toFixed(1).replace('.',',')} dB · ${pl[0]}</b></div>`;
     $('#abInfo').textContent=AB.src;applyAb()};
@@ -1973,7 +2070,11 @@ function realOpen(q){
 }
 /* ---------- Standbild, Probe-Messung, Vorher/Nachher ---------- */
 function loadImg(url){return new Promise((ok,no)=>{const i=new Image();i.onload=()=>{const c=document.createElement('canvas');c.width=i.naturalWidth;c.height=i.naturalHeight;c.getContext('2d').drawImage(i,0,0);ok(c)};i.onerror=()=>no(new Error('Bild konnte nicht geladen werden'));i.src=url})}
-async function waitTask(id,onp){for(;;){await new Promise(r=>setTimeout(r,600));const t=await api('/api/task/'+id);if(onp)onp(t);if(t.state==='fertig')return t.result;if(t.state==='fehler')throw new Error(t.error||'Fehler')}}
+const CTASK=new Set();
+$$('.pstop').forEach(b=>b.onclick=()=>{if(!CTASK.size)return;[...CTASK].forEach(id=>api('/api/task-cancel',{id}).catch(()=>{}));b.textContent='… stoppe';setTimeout(()=>b.textContent='⏹ Abbrechen',2500)});
+async function waitTask(id,onp,track){if(track)CTASK.add(id);try{return await waitTask0(id,onp)}finally{CTASK.delete(id)}}
+async function waitTask0(id,onp){for(;;){await new Promise(r=>setTimeout(r,600));const t=await api('/api/task/'+id);if(onp)onp(t);if(t.state==='fertig')return t.result;
+  if(t.state==='abgebrochen'){const e=new Error('abgebrochen');e.abort=true;e.partial=t.result||{};throw e}if(t.state==='fehler')throw new Error(t.error||'Fehler')}}
 async function realProbe(q,a){
   const key=pkey(q,a);probeRun={key};update();
   try{
@@ -2011,24 +2112,25 @@ function applyNest(){
   if(a===b&&ROOT.A&&ROOT.B){DIR.B=[]}
 }
 $('#cSub').addEventListener('change',()=>{['A','B'].forEach(x=>{if(SRC[x])realScan(x,SRC[x])})});
-function prog(id,txtId,pctId,p,txt){const el=$('#'+id);if(p==null){el.hidden=true;return}el.hidden=false;const n=Math.floor(p/5);el.querySelectorAll('.segbar i').forEach((e,i)=>e.classList.toggle('on',i<n));
+function prog(id,txtId,pctId,p,txt){const el=$('#'+id);if(p==null){el.hidden=true;return}el.hidden=false;const ps=el.querySelector('.pstop');if(ps)ps.hidden=p>=100;const n=Math.floor(p/5);el.querySelectorAll('.segbar i').forEach((e,i)=>e.classList.toggle('on',i<n));
   el.querySelector('.segbar').classList.toggle('done',p>=100);$('#'+pctId).textContent=Math.floor(p)+' %';if(txt!=null)$('#'+txtId).textContent=txt}
 async function realScan(side,path){
   $('#cnt'+side).textContent='lese …';prog('scan'+side,'scanTxt'+side,'scanPct'+side,0,'Lese '+path+' …');
   try{const {task}=await api('/api/scan',{path,recursive:$('#cSub').checked});
-    const r=await waitTask(task,t=>{prog('scan'+side,'scanTxt'+side,'scanPct'+side,t.pct||0,t.phase||'Lese Ordner …');$('#cnt'+side).textContent=`lese … ${t.pct||0} %`});
+    const r=await waitTask(task,t=>{prog('scan'+side,'scanTxt'+side,'scanPct'+side,t.pct||0,t.phase||'Lese Ordner …');$('#cnt'+side).textContent=`lese … ${t.pct||0} %`},true);
+    META[side]={dirs:r.dirs||0,space:r.space||null};addRecent(path);
     prog('scan'+side,'scanTxt'+side,'scanPct'+side,100,`Fertig: ${r.files.length.toLocaleString('de-DE')} Dateien`);setTimeout(()=>prog('scan'+side,null,null,null),2500);
     ROOT[side]=r.root;SRC[side]=path;if(!RESTORING)setTimeout(saveSession,0);
-    RAW[side]=r.files.map(f=>({u:++EUID,side,name:f.name,path:f.path,full:f.full,size:f.size,n:norm(f.name)}));
+    RAW[side]=r.files.map(f=>({u:++EUID,side,name:f.name,path:f.path,full:f.full,size:f.size,mt:f.mt,n:norm(f.name)}));
     autoCmp();
-  }catch(err){prog('scan'+side,null,null,null);toast('Fehler: '+err.message);cntDir(side)}
+  }catch(err){prog('scan'+side,null,null,null);toast(err.abort?'Einlesen abgebrochen – die alte Liste bleibt.':'Fehler: '+err.message);cntDir(side)}
 }
 async function realHash(){
   const rows=CMP.same.concat(CMP.similar).filter(r=>r.a.full&&r.b.full);if(!rows.length)return;
   $('#bHash').textContent='🔐 prüfe …';
   try{const paths=[...new Set(rows.flatMap(r=>[r.a.full,r.b.full]))];const {task}=await api('/api/hashtask',{paths});
-    const hashes=await waitTask(task,t=>prog('cmpProg','cmpProgTxt','cmpProgPct',t.pct||0,`🔐 Prüfsummen von ${paths.length} Dateien · ${t.phase||''}`));prog('cmpProg',null,null,null);
-    rows.forEach(r=>{const x=hashes[r.a.full],y=hashes[r.b.full];r.hash=!x||!y?'nicht lesbar':x===y?'Inhalt identisch (Hash gleich)':'Inhalt unterschiedlich'})}catch(err){toast(err.message)}
+    let hashes;try{hashes=await waitTask(task,t=>prog('cmpProg','cmpProgTxt','cmpProgPct',t.pct||0,`🔐 Prüfsummen von ${paths.length} Dateien · ${t.phase||''}`),true)}catch(e){if(!e.abort)throw e;hashes=e.partial;toast('Inhalt prüfen abgebrochen.')}prog('cmpProg',null,null,null);
+    rows.forEach(r=>{if(!(r.a.full in hashes)||!(r.b.full in hashes))return;const x=hashes[r.a.full],y=hashes[r.b.full];r.hash=!x||!y?'nicht lesbar':x===y?'Inhalt identisch (Hash gleich)':'Inhalt unterschiedlich'})}catch(err){prog('cmpProg',null,null,null);toast(err.message)}
   $('#bHash').textContent='🔐 Inhalt prüfen (Hash)';renderCmp();
 }
 let fpRun=false;
@@ -2036,10 +2138,11 @@ async function realFp(){
   if(fpRun)return;const todo=[...DIR.A,...DIR.B].filter(x=>x.full&&!x.fp&&!x.fpTried&&VID.test(x.name)).slice(0,400);if(!todo.length)return;
   fpRun=true;todo.forEach(x=>x.fpTried=true);
   try{const {task}=await api('/api/fp',{paths:todo.map(x=>x.full)});
-    const res=await waitTask(task,t=>{$('#cmpInfo').textContent=`🖼 Bild-Abgleich … ${t.pct||0} %`;prog('cmpProg','cmpProgTxt','cmpProgPct',t.pct||0,`🖼 Bild-Abgleich: vergleiche Standbilder von ${todo.length} Videos · ${t.phase||''}`)});
+    let res;try{res=await waitTask(task,t=>{$('#cmpInfo').textContent=`🔬 Tiefsuche … ${t.pct||0} %`;prog('cmpProg','cmpProgTxt','cmpProgPct',t.pct||0,`🔬 Tiefsuche: vergleiche Standbilder von ${todo.length} Videos · ${t.phase||''}`)},true)}
+    catch(e){if(!e.abort)throw e;res=e.partial;todo.forEach(x=>{if(!(x.full in res))x.fpTried=false});toast('Tiefsuche abgebrochen – bis dahin Gefundenes bleibt.')}
     prog('cmpProg',null,null,null);
     todo.forEach(x=>{const b=res[x.full];if(b)x.fp=b.split('').map(Number)});
-  }catch(err){prog('cmpProg',null,null,null);toast('Bild-Abgleich: '+err.message)}
+  }catch(err){prog('cmpProg',null,null,null);toast('Tiefsuche: '+err.message)}
   fpRun=false;compare();
 }
 async function realDelete(list){
@@ -2108,6 +2211,7 @@ async function realInit(){
   if(!INFO.ffmpeg)toast('FFmpeg fehlt – bitte das Programm neu installieren.');
   if(INFO.config.tmdb)$('#cTmdb').value=INFO.config.tmdb;
   $('#oDir').value=INFO.outdir;
+  ['A','B'].forEach(x=>renderDirInfo(x));loadSpace();
   $('#oTopic').value=INFO.config.ntfy||('butchies-'+Math.random().toString(36).slice(2,10));
   if(!INFO.config.ntfy)api('/api/config',{ntfy:$('#oTopic').value}).catch(()=>{});
   markEnc();applyAuto();update();

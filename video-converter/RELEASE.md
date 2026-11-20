@@ -35,6 +35,13 @@ FFmpeg mit allen Codecs ist dabei (inklusive VMAF-Messung und HDR). WebView2 wir
 **Neu in 1.1.3**
 - Das Programm **merkt sich jetzt alles** bis zum nächsten Start: Design, Start-Animation an/aus, Auto/Manuell-Schalter, eigene Einstellungen (Codec, Zielgröße, Zeitplan …) und eigene Vorlagen. Bisher ging das beim Neustart verloren
 
+**Neu in 1.2.0**
+- **Ordner-Infos in A und B:** Noch leer: zuletzt benutzte Ordner zum Anklicken und freier Speicher der Laufwerke (auch NAS). Eingelesen: Videos, Größe, Unterordner, freier Platz, Codecs und Auflösungen als Balken, Sparpotenzial (H.264 → H.265) mit Knopf „In Warteschlange“, auffällige Dateien (0 Byte, unfertige Downloads, sehr klein, „sample“) zum Anzeigen/Löschen, neueste und größte Datei
+- Knopf **„⚙ Anzeige“**: per Häkchen wählen, was gezeigt wird – gilt für A und B und bleibt gespeichert
+- **Abbrechen** beim Ordner-Einlesen, Inhalt prüfen und Tiefsuche
+- Auf Auto vergleicht der Abgleich nur noch Namen + Filmdatenbank (schnell). Der Bild-Abgleich heißt jetzt **„Tiefsuche“** und ist nur bei Manuell wählbar
+- Helles Design: Grün, Gelb, Rot und Blau sind dunkler und gut lesbar
+
 **Neu in 1.1.7**
 - Steht eine Leiste auf „Manuell“, klappt sie mit **nochmal „Manuell“ antippen** (oder Klick auf die Überschrift) zu und wieder auf – wie alles andere
 - Das Programm merkt sich, welche Leisten auf Manuell stehen, welche zu- oder aufgeklappt sind und alle gewählten Werte – auch nach dem Neustart

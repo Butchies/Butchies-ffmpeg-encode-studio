@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 APP_NAME = 'Butchies Video Converter'
-VERSION = '1.1.7'
+VERSION = '1.2.0'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 UI = BASE / 'ui'
@@ -715,6 +715,15 @@ def task_abshot(tid, e, vargs, frac):
     T['pct'], T['state'] = 100, 'fertig'
 
 
+class Abort(Exception):
+    """Aufgabe wurde vom Nutzer abgebrochen."""
+
+
+def check_abort(T):
+    if T is not None and T.get('cancel'):
+        raise Abort()
+
+
 def start_task(fn, *args):
     tid = secrets.token_hex(6)
     TASKS[tid] = {'id': tid, 'state': 'läuft', 'pct': 0, 'phase': 'Starte …'}
@@ -722,6 +731,8 @@ def start_task(fn, *args):
     def go():
         try:
             fn(tid, *args)
+        except Abort:
+            TASKS[tid].update(state='abgebrochen', phase='abgebrochen')
         except Exception as ex:  # noqa: BLE001
             TASKS[tid].update(state='fehler', error=str(ex))
     threading.Thread(target=go, daemon=True).start()
@@ -735,9 +746,10 @@ def scan(folder, limit=100000, T=None, recursive=True):
     root = Path(folder)
     if not root.is_dir():
         raise ValueError('Ordner nicht gefunden')
-    out, done = [], [0.0]
+    out, done, dirs = [], [0.0], [0]
 
     def walk(d, w):
+        check_abort(T)
         if len(out) >= limit:
             return
         try:
@@ -753,10 +765,12 @@ def scan(folder, limit=100000, T=None, recursive=True):
                         subs.append(e.path)
                 elif e.is_file(follow_symlinks=False):
                     p = Path(e.path)
-                    out.append({'name': e.name, 'full': e.path, 'size': e.stat().st_size,
+                    st = e.stat()
+                    out.append({'name': e.name, 'full': e.path, 'size': st.st_size, 'mt': int(st.st_mtime),
                                 'path': root.name + '/' + str(p.relative_to(root)).replace('\\', '/')})
             except (OSError, ValueError):
                 pass
+        dirs[0] += len(subs) if recursive else 0
         share = w / (len(subs) + 1)
         done[0] += share
         if T is not None:
@@ -769,13 +783,30 @@ def scan(folder, limit=100000, T=None, recursive=True):
             walk(sub, share)
     walk(root, 1.0)
     out.sort(key=lambda f: f['path'].lower())
+    if T is not None:
+        T['dirs'] = dirs[0]
     return out
+
+
+def space(path):
+    """Freier/gesamter Speicher und Art des Laufwerks (lokal, USB, NAS/Netzwerk)."""
+    p = str(path)
+    kind = 'nas' if p.startswith('\\\\') or p.startswith('//') else 'local'
+    if os.name == 'nt' and kind == 'local' and len(p) >= 2 and p[1] == ':':
+        import ctypes
+        t = ctypes.windll.kernel32.GetDriveTypeW(p[:2] + '\\')
+        kind = {2: 'usb', 4: 'nas', 5: 'cd'}.get(t, 'local')
+    try:
+        u = shutil.disk_usage(p)
+        return {'path': p, 'free': u.free, 'total': u.total, 'kind': kind}
+    except OSError:
+        return {'path': p, 'free': None, 'total': None, 'kind': kind}
 
 
 def task_scan(tid, folder, recursive=True):
     T = TASKS[tid]
     files = scan(folder, T=T, recursive=recursive)
-    T['result'] = {'root': str(Path(folder)), 'files': files}
+    T['result'] = {'root': str(Path(folder)), 'files': files, 'dirs': T.get('dirs', 0), 'space': space(folder)}
     T['pct'], T['state'] = 100, 'fertig'
 
 
@@ -783,6 +814,9 @@ def task_hash(tid, paths):
     T = TASKS[tid]
     res = {}
     for i, p in enumerate(paths):
+        if T.get('cancel'):
+            T['result'] = res
+            raise Abort()
         T['pct'], T['phase'] = round(i / max(1, len(paths)) * 100), Path(p).name
         try:
             res[p] = quick_hash(p)
@@ -825,6 +859,9 @@ def task_fp(tid, paths):
     T = TASKS[tid]
     res = {}
     for i, p in enumerate(paths):
+        if T.get('cancel'):
+            T['result'] = res
+            raise Abort()
         T['pct'] = round(i / max(1, len(paths)) * 100)
         T['phase'] = Path(p).name
         try:
@@ -1160,6 +1197,18 @@ class Handler(BaseHTTPRequestHandler):
                 if not Path(d.get('path', '')).is_dir():
                     raise ValueError('Ordner nicht gefunden')
                 return self.send_json(200, {'task': start_task(task_scan, d.get('path', ''), d.get('recursive', True) is not False)})
+            if path == '/api/task-cancel':
+                t = TASKS.get(str(d.get('id', '')))
+                if t:
+                    t['cancel'] = True
+                return self.send_json(200, {'ok': bool(t)})
+            if path == '/api/space':
+                seen, out = set(), []
+                for p in (d.get('paths') or [])[:20]:
+                    if p and p not in seen and Path(p).exists():
+                        seen.add(p)
+                        out.append(space(p))
+                return self.send_json(200, {'space': out})
             if path == '/api/hashtask':
                 return self.send_json(200, {'task': start_task(task_hash, [p for p in d.get('paths', [])][:2000])})
             if path == '/api/hash':
@@ -1657,6 +1706,13 @@ def selftest():
         check('HDR -> SDR (zscale fehlt)', False)
     files = scan(work)
     check('Ordner scannen', any(f['name'].endswith('.mkv') for f in files), len(files))
+    sp = space(work)
+    check('Speicher + Laufwerksart', (sp['free'] or 0) > 0, '%s %s' % (sp['kind'], sp['free']))
+    try:
+        scan(work, T={'cancel': True})
+        check('Einlesen abbrechen', False)
+    except Abort:
+        check('Einlesen abbrechen', True)
     check('Prüfsumme', len(quick_hash(src)) == 16)
     check('Bild-Fingerabdruck', (frame_bits(src) or '').count('1') > 10)
     p = popen(stream_cmd(e, 1, 0))
