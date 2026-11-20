@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ORIGINAL – Start- und Beenden-Animation (Butchies Video Converter AI)</title>
+<style>
+@font-face{font-family:Outfit;src:url(fonts/outfit-latin-wght-normal.woff2) format('woff2');font-weight:100 900;font-display:swap}
+@font-face{font-family:Outfit;src:url(fonts/outfit-latin-ext-wght-normal.woff2) format('woff2');font-weight:100 900;font-display:swap;unicode-range:U+0100-02AF,U+1E00-1EFF,U+2020,U+20A0-20AB,U+20AD-20CF}
+@font-face{font-family:'DM Sans';src:url(fonts/dm-sans-latin-wght-normal.woff2) format('woff2');font-weight:100 1000;font-display:swap}
+@font-face{font-family:'DM Sans';src:url(fonts/dm-sans-latin-ext-wght-normal.woff2) format('woff2');font-weight:100 1000;font-display:swap;unicode-range:U+0100-02AF,U+1E00-1EFF,U+2020,U+20A0-20AB,U+20AD-20CF}
+@font-face{font-family:Unbounded;src:url(fonts/unbounded.woff2) format('woff2');font-weight:200 900;font-display:swap}
+@font-face{font-family:Quicksand;src:url(fonts/quicksand.woff2) format('woff2');font-weight:300 700;font-display:swap}
+@font-face{font-family:'Playfair Display';src:url(fonts/playfair.woff2) format('woff2');font-weight:400 900;font-display:swap}
+@font-face{font-family:'Space Grotesk';src:url(fonts/spacegrotesk.woff2) format('woff2');font-weight:300 700;font-display:swap}
+@font-face{font-family:'JetBrains Mono';src:url(fonts/jetbrainsmono.woff2) format('woff2');font-weight:100 800;font-display:swap}
+@font-face{font-family:'Cormorant Garamond';src:url(fonts/cormorant.woff2) format('woff2');font-weight:300 700;font-display:swap}
+@font-face{font-family:'Archivo Black';src:url(fonts/archivoblack.woff2) format('woff2');font-weight:400 900;font-display:swap}
+@font-face{font-family:'Space Mono';src:url(fonts/spacemono.woff2) format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Space Mono';src:url(fonts/spacemono-bold.woff2) format('woff2');font-weight:700;font-display:swap}
+@font-face{font-family:Manrope;src:url(fonts/manrope.woff2) format('woff2');font-weight:200 800;font-display:swap}
+:root{--ok:#2fd38f;--bad:#ff6b7a;--warn:#ffcf5a;--info:#6fb3ff;--ok2:#a9d86e;--orange:#f29a4e;--violet:#c79bff;--fh:Outfit,sans-serif;--fb:'DM Sans',system-ui,sans-serif;--fm:'JetBrains Mono',ui-monospace,Consolas,monospace;color-scheme:dark}
+:root,[data-theme=neon]{--a:#a46bff;--b:#ff6fc4;--bg:#0b0614;--bg2:#160c26;--panel:rgba(255,255,255,.055);--panel2:rgba(255,255,255,.09);--line:rgba(255,255,255,.1);--text:#f6f1ff;--muted:#b3a6c9;--glow:rgba(164,107,255,.45);--on:#fff}
+[data-theme=ocean]{--a:#38bdf8;--b:#22d3ee;--bg:#03101a;--bg2:#06202e;--glow:rgba(56,189,248,.42);--muted:#9cb9c9;--on:#03101a}
+[data-theme=sunset]{--a:#ff7a45;--b:#ff4f9a;--bg:#140708;--bg2:#2a0f14;--glow:rgba(255,122,69,.42);--muted:#cfa9a6;--on:#1a0706}
+[data-theme=emerald]{--a:#2fd38f;--b:#a3e635;--bg:#04110c;--bg2:#0a2318;--glow:rgba(47,211,143,.4);--muted:#a3c4b5;--on:#04110c}
+[data-theme=gold]{--a:#f5b544;--b:#ffdf8a;--bg:#0d0a05;--bg2:#1f1708;--glow:rgba(245,181,68,.4);--muted:#c9b991;--on:#1a1205}
+[data-theme=mono]{--a:#e5e5e5;--b:#9ca3af;--bg:#0a0a0a;--bg2:#171717;--glow:rgba(255,255,255,.22);--muted:#a3a3a3;--on:#0a0a0a}
+[data-theme=light]{--a:#7c3aed;--b:#db2777;--bg:#f6f2fb;--bg2:#ece3f8;--panel:rgba(30,10,60,.05);--panel2:rgba(30,10,60,.08);--line:rgba(30,10,60,.12);--text:#1d1430;--muted:#5f5374;--glow:rgba(124,58,237,.28);--on:#fff;color-scheme:light;
+  --ok:#0f8a55;--ok2:#4d7c0f;--warn:#a86400;--orange:#c2410c;--bad:#c62839;--info:#1d6fc2;--violet:#7c3aed}
+body{--txt:var(--text);--mut:var(--muted);--acc:var(--a);--acc2:var(--b);--inset:color-mix(in srgb,var(--bg) 60%,transparent);--deep:color-mix(in srgb,var(--bg) 70%,#000);--r:18px}
+*{box-sizing:border-box}
+[data-skin=club]{--fh:Unbounded,var(--fb)}
+[data-skin=wellen]{--fh:Quicksand,sans-serif;--fb:Quicksand,system-ui,sans-serif}
+[data-skin=magazin]{--fh:'Playfair Display',Georgia,serif}
+[data-skin=studio]{--fh:'Space Grotesk',sans-serif;--fb:'Space Grotesk',system-ui,sans-serif}
+[data-skin=lounge]{--fh:'Cormorant Garamond',Georgia,serif}
+[data-skin=index]{--fh:'Archivo Black',sans-serif;--fm:'Space Mono',ui-monospace,monospace}
+[data-skin=tag]{--fh:Manrope,sans-serif;--fb:Manrope,system-ui,sans-serif}
+[data-skin=lounge] h2,[data-skin=lounge] .brand b{font-weight:700;letter-spacing:0}
+[data-skin=lounge] h2{font-size:19px}
+html,body{margin:0;min-height:100%}
+body{background:radial-gradient(50% 40% at 0% 0%,color-mix(in srgb,var(--a) 20%,transparent),transparent 70%),radial-gradient(40% 35% at 100% 100%,color-mix(in srgb,var(--b) 12%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);font:400 14.5px/1.5 var(--fb);transition:background-color .5s}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--fb)}
+.ai-mark{background:linear-gradient(110deg,var(--a),var(--b));-webkit-background-clip:text;background-clip:text;color:transparent}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:10px;padding:8px 14px;font:600 13px var(--fb);cursor:pointer}
+.ctl{position:fixed;left:10px;bottom:10px;z-index:999;display:flex;gap:6px;flex-wrap:wrap}
+.splash{position:fixed;inset:0;z-index:150;display:grid;place-items:center;text-align:center;padding:24px;overflow:hidden;background:radial-gradient(60% 60% at 50% 40%,var(--bg2),var(--bg));transition:opacity .9s ease,visibility .9s,transform .9s ease;cursor:pointer}
+.splash.leave{opacity:0;visibility:hidden;transform:scale(1.06)}
+.sp-orbs i{position:absolute;border-radius:50%;filter:blur(60px);opacity:.55;animation:sporb 14s ease-in-out infinite alternate}
+.sp-orbs i:nth-child(1){width:42vmax;height:42vmax;left:-12vmax;top:-10vmax;background:var(--a)}
+.sp-orbs i:nth-child(2){width:36vmax;height:36vmax;right:-10vmax;bottom:-12vmax;background:var(--b);animation-delay:-5s}
+.sp-orbs i:nth-child(3){width:22vmax;height:22vmax;left:40%;top:55%;background:color-mix(in srgb,var(--a) 50%,var(--b));animation-delay:-9s;opacity:.35}
+@keyframes sporb{to{transform:translate3d(6vmax,4vmax,0) scale(1.15)}}
+.sp-center{position:relative}
+.sp-logo{position:relative;width:150px;height:150px;margin:0 auto 26px;display:grid;place-items:center;animation:sppop .8s cubic-bezier(.2,.9,.3,1.3) both}
+.sp-ring{position:absolute;inset:0;border-radius:50%;border:2px solid transparent;background:linear-gradient(var(--bg),var(--bg)) padding-box,conic-gradient(from 0deg,var(--a),var(--b),transparent 70%,var(--a)) border-box;animation:spspin 6s linear infinite}
+.sp-ring.r1{box-shadow:0 0 50px var(--glow)}
+.sp-ring.r2{inset:16px;animation-duration:9s;animation-direction:reverse;opacity:.8}
+.sp-ring.r3{inset:32px;animation-duration:4s;opacity:.6}
+@keyframes spspin{to{transform:rotate(360deg)}}
+.sp-eq{position:relative;display:flex;gap:5px;align-items:center;height:44px}
+.sp-eq i{width:6px;border-radius:6px;background:linear-gradient(var(--b),var(--a));animation:speq 1s ease-in-out infinite}
+.sp-eq i:nth-child(1){animation-delay:-.2s}.sp-eq i:nth-child(2){animation-delay:-.5s}.sp-eq i:nth-child(3){animation-delay:-.1s}.sp-eq i:nth-child(4){animation-delay:-.7s}.sp-eq i:nth-child(5){animation-delay:-.35s}
+@keyframes speq{0%,100%{height:10px}50%{height:44px}}
+.sp-kicker{margin:0 0 4px;font-size:13px;font-weight:700;letter-spacing:.32em;text-transform:uppercase;color:var(--muted);animation:sprise .9s .2s both}
+.sp-title{margin:0;font:900 clamp(40px,7.5vw,84px)/1 var(--fh);background:linear-gradient(100deg,#fff 10%,var(--b) 50%,var(--a) 90%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sprise 1s .35s both,spshine 6s 1.5s ease-in-out infinite;padding:0 .05em}
+[data-theme=light] .sp-title{background-image:linear-gradient(100deg,var(--text) 10%,var(--b) 50%,var(--a) 90%)}
+@keyframes spshine{50%{background-position:100% 0}}
+.sp-tag{margin:14px 0 0;font-size:18px;color:var(--muted);animation:sprise 1s .5s both}
+.sp-skip{margin:34px 0 0;font-size:12px;color:var(--muted);opacity:.7;animation:sprise 1s 1.2s both}
+@keyframes sprise{from{opacity:0;transform:translateY(18px)}}
+@keyframes sppop{from{opacity:0;transform:scale(.6)}}
+@media (prefers-reduced-motion:reduce){.splash *,.viz-prev i{animation:none!important}}
+/* ---------- Auf Wiedersehen (Butchies-Webseite) ---------- */
+.goodbye{position:fixed;inset:0;z-index:160;display:grid;place-items:center;text-align:center;padding:24px;overflow:hidden;background:radial-gradient(60% 60% at 50% 45%,var(--bg2),var(--bg));opacity:0;transition:opacity .6s ease}
+.goodbye.show{opacity:1}
+.g-orbs i{position:absolute;border-radius:50%;filter:blur(70px);opacity:.5;animation:gorb 5s ease-in-out both}
+.g-orbs i:nth-child(1){width:46vmax;height:46vmax;left:-14vmax;top:-12vmax;background:var(--a)}
+.g-orbs i:nth-child(2){width:40vmax;height:40vmax;right:-12vmax;bottom:-14vmax;background:var(--b)}
+.g-orbs i:nth-child(3){width:24vmax;height:24vmax;left:38%;top:52%;background:color-mix(in srgb,var(--a) 50%,var(--b));opacity:.35}
+@keyframes gorb{from{transform:scale(1.25)}to{transform:translate3d(-4vmax,-3vmax,0) scale(.9)}}
+.g-center{position:relative;transition:transform 1s cubic-bezier(.6,0,.4,1),opacity .9s ease,filter .9s ease}
+.g-logo{position:relative;width:150px;height:150px;margin:0 auto 26px;display:grid;place-items:center;animation:gpop .9s cubic-bezier(.2,.9,.3,1.3) both}
+.g-logo .sp-ring{animation-duration:2.4s}.g-logo .sp-ring.r2{animation-duration:3.4s}.g-logo .sp-ring.r3{animation-duration:1.6s}
+@keyframes gpop{from{opacity:0;transform:scale(.4) rotate(-90deg)}}
+.g-eq{position:relative;display:flex;gap:5px;align-items:center;height:44px}
+.g-eq i{width:6px;height:10px;border-radius:6px;background:linear-gradient(var(--b),var(--a));animation:geq 1s ease-in-out 3 both}
+.g-eq i:nth-child(1){animation-delay:.1s}.g-eq i:nth-child(2){animation-delay:.35s}.g-eq i:nth-child(3){animation-delay:0s}.g-eq i:nth-child(4){animation-delay:.5s}.g-eq i:nth-child(5){animation-delay:.25s}
+@keyframes geq{0%,100%{height:6px}50%{height:44px}}
+.g-kicker{margin:0 0 6px;font-size:13px;font-weight:700;letter-spacing:.32em;text-transform:uppercase;color:var(--muted);animation:sprise .9s .25s both}
+.g-title{margin:0;font:900 clamp(52px,11vw,120px)/.95 var(--fh);padding:0 .06em;background:linear-gradient(100deg,#fff 10%,var(--b) 50%,var(--a) 90%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sprise 1s .4s both,spshine 2.4s .9s ease-in-out infinite}
+[data-theme=light] .g-title{background-image:linear-gradient(100deg,var(--text) 10%,var(--b) 50%,var(--a) 90%)}
+.g-tag{margin:16px 0 0;font-size:18px;color:var(--muted);animation:sprise 1s .6s both}
+.g-hint{margin:8px 0 0;font-size:13px;color:var(--muted);opacity:.8;animation:sprise 1s .8s both}
+.goodbye.closing .g-center{transform:scale(.06);opacity:0;filter:blur(6px)}
+.g-wave{position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#fff;box-shadow:0 0 30px 10px var(--b),0 0 80px 30px var(--a);opacity:0;pointer-events:none}
+.goodbye.closing .g-wave{animation:gwave 1.3s .55s cubic-bezier(.2,.7,.2,1) both}
+@keyframes gwave{0%{opacity:0;transform:scale(.2)}15%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(60);background:transparent}}
+.goodbye.done{opacity:0;transition:opacity .4s}
+@media (prefers-reduced-motion:reduce){.goodbye *{animation:none!important;transition:none!important}}
+</style></head>
+<body data-theme="gold" data-skin="lounge">
+<div class="splash" id="splash" aria-hidden="true">
+ <div class="sp-orbs"><i></i><i></i><i></i></div>
+ <div class="sp-center">
+  <div class="sp-logo"><span class="sp-ring r1"></span><span class="sp-ring r2"></span><span class="sp-ring r3"></span><span class="sp-eq"><i></i><i></i><i></i><i></i><i></i></span></div>
+  <p class="sp-kicker">Willkommen im</p>
+  <h1 class="sp-title">Butchies Video Converter <span class="ai-mark">AI</span></h1>
+  <p class="sp-tag">Umwandeln. Vergleichen. Aufräumen – mit KI.</p>
+  <p class="sp-skip">Klicken zum Überspringen</p>
+ </div>
+</div>
+<section id="goodbye" class="goodbye" hidden aria-live="polite">
+ <div class="g-orbs" aria-hidden="true"><i></i><i></i><i></i></div>
+ <div class="g-center">
+  <div class="g-logo" aria-hidden="true"><span class="sp-ring r1"></span><span class="sp-ring r2"></span><span class="sp-ring r3"></span><span class="g-eq"><i></i><i></i><i></i><i></i><i></i></span></div>
+  <p class="g-kicker">Danke fürs Umwandeln</p>
+  <h1 class="g-title">Bis bald!</h1>
+  <p class="g-tag">Butchies Video Converter <span class="ai-mark">AI</span></p>
+  <p class="g-hint" id="gHint">Bis zum nächsten Film.</p>
+  <div class="g-actions" id="gBack" hidden><button class="btn" id="gBackBtn">↺ Vorschau wieder öffnen</button></div>
+ </div>
+ <span class="g-wave" aria-hidden="true"></span>
+<div class="ctl">
+ <button class="btn" onclick="replaySplash()">▶ Start-Animation</button>
+ <button class="btn" onclick="playBye()">⏻ Beenden-Animation</button>
+ <select class="btn" onchange="document.body.dataset.theme=this.value;document.body.dataset.skin={neon:'club',ocean:'wellen',sunset:'magazin',emerald:'studio',gold:'lounge',mono:'index',light:'tag'}[this.value]"><option>gold</option><option>neon</option><option>ocean</option><option>sunset</option><option>emerald</option><option>mono</option><option>light</option></select>
+</div>
+<script>
+const $=s=>document.querySelector(s);const SP=$('#splash').outerHTML;
+function leave(){const sp=$('#splash');if(sp)sp.classList.add('leave')}
+$('#splash').onclick=leave;setTimeout(leave,3400);
+function replaySplash(){const o=$('#splash');if(o)o.remove();document.body.insertAdjacentHTML('afterbegin',SP);$('#splash').onclick=leave;setTimeout(leave,3400)}
+async function playBye(){const g=$('#goodbye');g.hidden=false;g.classList.remove('closing','done');requestAnimationFrame(()=>g.classList.add('show'));
+ await new Promise(r=>setTimeout(r,3000));g.classList.add('closing');await new Promise(r=>setTimeout(r,1500));
+ g.classList.remove('show','closing');setTimeout(()=>g.hidden=true,600)}
+</script></body></html>
