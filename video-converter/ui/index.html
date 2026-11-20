@@ -439,6 +439,15 @@ dialog[open]{animation:dlg .3s ease}
       </div>
         <div style="margin-bottom:12px"><label class="chk"><input type="checkbox" id="sYt"> <span>🚀 YouTube-Boost: auf 1440p hochrechnen <small style="color:var(--muted);font-weight:500">– YouTube gibt dann mehr Bitrate + besseren Codec, auch in 1080p schärfer (Datei wird größer, nur zum Hochladen)</small></span></label></div>
       <div class="arows">
+      <div class="arow real-only" data-sec="par">
+        <div class="ahead"><span class="aic">⚡</span><div class="atx"><b>Prozessor &amp; Grafikkarten</b><small id="sum-par">–</small></div>
+          <div class="am"><button data-a="auto" class="on">Auto</button><button data-a="man">Manuell</button></div></div>
+        <div class="adrawer"><div class="adin"><div class="form">
+        <div class="f full"><label>Wer arbeitet mit?</label><div id="parList" class="trk"></div></div>
+        <div class="f full"><label>Verteilung</label><select id="parMode"><option value="auto">KI: schnell fertig, Qualität bleibt mindestens „Gut“</option><option value="fast">So schnell wie möglich (Grafikkarten)</option><option value="quality">Beste Qualität (nur Prozessor, x265)</option></select></div>
+        <div class="f full"><div class="hint" id="parInfo" style="margin:0"></div></div>
+        </div></div></div>
+      </div>
       <div class="arow" data-sec="codec">
         <div class="ahead"><span class="aic">🎞️</span><div class="atx"><b>Codec &amp; Encoder</b><small id="sum-codec">–</small></div>
           <div class="am"><button data-a="auto" class="on">Auto</button><button data-a="man">Manuell</button></div></div>
@@ -611,6 +620,7 @@ dialog[open]{animation:dlg .3s ease}
           <div><small>Restzeit (echt)</small><b id="mEta">–</b></div>
         </div>
       </div>
+      <div class="hint" id="monRun" style="margin:0 0 8px"></div>
       <div class="pgline"><small>Gesamtfortschritt Warteschlange</small><b id="pAllT">0 %</b></div>
       <div class="segbar" id="pAll"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <canvas id="chart" width="900" height="280"></canvas>
@@ -771,7 +781,7 @@ function refreshPre(){
 $$('#sFam button').forEach(b=>b.onclick=()=>{S.fam=b.dataset.v;$$('#sFam button').forEach(x=>x.classList.toggle('on',x===b));refreshEnc();update()});
 $$('#sMode button').forEach(b=>b.onclick=()=>{S.mode=b.dataset.v;$$('#sMode button').forEach(x=>x.classList.toggle('on',x===b));$('#wCrf').hidden=S.mode!=='crf';$('#wCbr').hidden=S.mode!=='cbr';update()});
 $('#sEnc').onchange=()=>{refreshPre();update()};
-['#sProf','#sPre','#sTune','#sLvl','#sCont','#sMin','#sMax','#s2p','#sCrf','#sCbr','#sRes','#sFps','#sAud','#sAbr','#sAuto','#sYt','#sHdr','#oDir','#oName','#oStart','#oAfter','#oPush'].forEach(id=>{$(id).addEventListener('input',update);$(id).addEventListener('change',update)});
+['#parMode','#sProf','#sPre','#sTune','#sLvl','#sCont','#sMin','#sMax','#s2p','#sCrf','#sCbr','#sRes','#sFps','#sAud','#sAbr','#sAuto','#sYt','#sHdr','#oDir','#oName','#oStart','#oAfter','#oPush'].forEach(id=>{$(id).addEventListener('input',update);$(id).addEventListener('change',update)});
 refreshEnc();
 
 function settings(){
@@ -784,7 +794,7 @@ function settings(){
     out:{dir:$('#oDir').value.trim(),name:$('#oName').value,start:$('#oStart').value,after:$('#oAfter').value,push:$('#oPush').checked}};
 }
 /* ================= KI-AUTOPILOT (Auto / Manuell) ================= */
-const AUTO_DEF={codec:true,quality:true,res:true,content:true,hdr:true,tracks:true,out:true,probe:true,cmp:true};
+const AUTO_DEF={par:true,codec:true,quality:true,res:true,content:true,hdr:true,tracks:true,out:true,probe:true,cmp:true};
 let AUTO=Object.assign({},AUTO_DEF);
 try{const sv=JSON.parse(localStorage.getItem('bvc-auto')||'null');if(sv)Object.assign(AUTO,sv)}catch(e){}
 const saveAuto=()=>{try{localStorage.setItem('bvc-auto',JSON.stringify(AUTO))}catch(e){}};
@@ -794,6 +804,7 @@ function setSel(id,v){const e=$(id);if(e&&e.value!=v&&[...e.options].some(o=>o.v
 function setModeS(m){if(S.mode!==m){S.mode=m;$$('#sMode button').forEach(x=>x.classList.toggle('on',x.dataset.v===m));$('#wCrf').hidden=m!=='crf';$('#wCbr').hidden=m!=='cbr'}}
 function applyAuto(){
   const yt=$('#sYt').checked;
+  if(AUTO.par)setSel('#parMode','auto');
   if(AUTO.codec){setFam(yt?'h264':'h265');setEnc(yt?'libx264':'libx265');setSel('#sProf',yt?'high':'main10');setSel('#sPre','slow');setSel('#sLvl','auto');setSel('#sCont',yt?'mp4':'mkv')}
   if(AUTO.quality){setModeS('size');$('#s2p').checked=true}
   if(AUTO.res){setSel('#sRes','0');setSel('#sFps','0');$('#sAuto').checked=true}
@@ -928,6 +939,7 @@ function updSums(){
   const q=selQ(),s=settings(),d=q?det(q):null;
   const encS={libx264:'x264',libx265:'x265',h264_amf:'AMD',hevc_amf:'AMD',h264_nvenc:'NVIDIA',hevc_nvenc:'NVIDIA',h264_qsv:'Intel',hevc_qsv:'Intel'}[s.enc];
   const set=(k,t)=>{const e=$('#sum-'+k);if(e)e.textContent=(AUTO[k]?'KI: ':'Manuell: ')+t};
+  if(REAL&&INFO&&INFO.workers){const sl=parSlots();set('par',sl.map(x=>wName(x)).join(' + ')+(sl.length>1?' – parallel':''));try{renderPar()}catch(e){}}
   set('codec',`${s.fam==='h265'?'H.265':'H.264'} · ${encS} ${s.pre} · ${s.profName.split(' (')[0]} · ${s.cont.toUpperCase()}`);
   set('quality',S.mode==='size'?`Zielgröße treffen${s.twoPass?' · 2-Pass':''}`:S.mode==='crf'?`Qualität CRF ${s.crf}`:`Feste Bitrate ${s.cbr} kbit/s`);
   set('res',(s.maxH?`max. ${s.maxH}p`:'Original')+(s.auto?', skaliert bei Bedarf':'')+(s.fps?` · ${s.fps} fps`:''));
@@ -1175,7 +1187,7 @@ function renderQ(){
   try{renderPL();fillAbFile()}catch(e){}
   if(!Q.length){$('#queue').innerHTML=`<div class="empty">${REAL?'Noch keine Dateien – Videos oder Ordner hineinziehen oder „Dateien wählen“.':'Noch keine Dateien. Zum Ausprobieren auf „Demo-Dateien“ tippen.'}</div>`;return}
   $('#queue').innerHTML=Q.map(q=>{const a=analyze(q,s);q.a=a;const [lb,c]=label(a.score);
-    const st=q.bad&&!q.force?'<span class="bad">⚠ defekt</span>':q.state==='done'?'✓ fertig'+(q.out?`<button class="fold" data-show="${q.id}" title="Im Ordner zeigen">📂</button>`:''):q.state==='run'?'läuft…':q.state==='queued'?'wartet':q.state==='err'?'<span class="bad">✕ Fehler</span>':q.state==='stop'?'abgebrochen':q.state==='skip'?'übersprungen':'';
+    const st=q.bad&&!q.force?'<span class="bad">⚠ defekt</span>':q.state==='done'?'✓ fertig'+(q.out?`<button class="fold" data-show="${q.id}" title="Im Ordner zeigen">📂</button>`:''):q.state==='run'?'läuft…'+(q.slot&&REAL?` · ${wIcon(q.slot)} ${esc(wName(q.slot))}`:''):q.state==='queued'?'wartet'+(q.slot&&REAL?` · ${wIcon(q.slot)} ${esc(wName(q.slot))}`:''):q.state==='err'?'<span class="bad">✕ Fehler</span>':q.state==='stop'?'abgebrochen':q.state==='skip'?'übersprungen':'';
     return `<div class="qi ${q.id===selId?'sel':''} ${q.state} ${q.bad&&!q.force?'isbad':''}" data-id="${q.id}">
       <div class="nm" title="${esc(q.path)}"><button class="pb" data-play="${q.id}" title="Im Player abspielen">▶</button>${esc(q.name)}</div>
       <div class="sc" style="color:${c}">${a.score} · ${lb}</div>
@@ -1745,6 +1757,55 @@ $('#pUp').onchange=()=>applyUp(false);
 ['pointerup','pointerleave','pointercancel'].forEach(t=>$('#pOrig').addEventListener(t,()=>applyUp(false)));
 applyUp(false);
 $$('#abPos button').forEach(b=>b.onclick=()=>{const q=Q.find(x=>x.id==$('#abFile').value)||selQ();if(!q){toast('Erst eine Datei in der Liste wählen.');return}if(REAL&&q.fid)return realAB(q,+b.dataset.f);grabFrame(q,+b.dataset.f).then(c=>setBefore(c,q,`Probestelle ${Math.round(b.dataset.f*100)} % · ${q.name}`))});
+/* ================= Prozessor + Grafikkarten: parallel umwandeln ================= */
+let PARSEL=null;
+const WK=()=>INFO&&INFO.workers?INFO.workers.filter(w=>w.ok):[];
+const wName=slot=>{const w=(INFO&&INFO.workers||[]).find(x=>x.slot===slot);if(!w)return slot;return w.kind==='cpu'?'Prozessor':w.name.replace(/\(TM\)|\(R\)|Graphics/gi,'').replace(/\s+/g,' ').trim()};
+const wIcon=slot=>slot==='cpu'?'🖥':'🎮';
+function parSlots(){
+  const ok=WK().map(w=>w.slot);if(!PARSEL)PARSEL=new Set(ok);
+  if(AUTO.par){
+    if(!AUTO.codec){const k=encKind($('#sEnc').value);return k==='sw'?['cpu']:ok.filter(x=>x!=='cpu')}
+    return ok;
+  }
+  const mode=$('#parMode').value,sel=ok.filter(x=>PARSEL.has(x));
+  if(mode==='quality')return sel.includes('cpu')?['cpu']:sel.slice(0,1);
+  if(mode==='fast')return sel.filter(x=>x!=='cpu').length?sel.filter(x=>x!=='cpu'):sel;
+  return sel.length?sel:['cpu'];
+}
+function settingsFor(slot){
+  const s=settings();if(slot==='cpu'){if(s.kind!=='sw'){s.enc=s.fam==='h264'?'libx264':'libx265';s.kind='sw';s.pre='slow'}return s}
+  const w=INFO.workers.find(x=>x.slot===slot);let fam=s.fam;if(fam==='h265'&&!w.hevc)fam='h264';
+  const enc=w.enc[fam],k=encKind(enc);
+  Object.assign(s,{fam,enc,kind:k,pre:k==='sw'?'veryfast':{amf:'quality',nvenc:'p6',qsv:'slow'}[k],twoPass:false,tune:'–'});
+  if(s.chroma!=='420'||s.bits>10||(fam==='h264'&&s.bits>8)||!PROF[fam].some(p=>p[0]===s.prof)){const p=PROF[fam].find(x=>x[0]===(fam==='h264'?'high':'main10'));Object.assign(s,{prof:p[0],profName:p[1],bits:p[2],chroma:p[3]})}
+  return s;
+}
+function planJobs(todo){
+  const slots=parSlots(),load={},plan=[];slots.forEach(x=>load[x]=0);
+  const mode=AUTO.par?'auto':$('#parMode').value;
+  const opts=todo.map(q=>({q,by:Object.fromEntries(slots.map(sl=>[sl,analyze(q,settingsFor(sl))]))}));
+  opts.sort((x,y)=>(y.by[slots[0]].encTime)-(x.by[slots[0]].encTime));
+  for(const o of opts){
+    let best=null,bt=Infinity;
+    for(const sl of slots){const a=o.by[sl];if(mode==='auto'&&sl!=='cpu'&&slots.includes('cpu')&&a.score<70&&o.by.cpu.score>=70)continue;
+      const t=load[sl]+a.encTime;if(t<bt-1){bt=t;best=sl}}
+    best=best||slots[0];load[best]+=o.by[best].encTime;plan.push({q:o.q,slot:best,a:o.by[best]});
+  }
+  const single=opts.reduce((x,o)=>x+o.by[slots[0]].encTime,0),par=Math.max(...Object.values(load),0);
+  return {plan,single,par,slots};
+}
+function renderPar(){
+  const box=$('#parList');if(!box||!INFO)return;const all=INFO.workers||[];if(!PARSEL)PARSEL=new Set(WK().map(w=>w.slot));
+  const dis=AUTO.par?'disabled':'';
+  box.innerHTML=all.map(w=>`<label class="${w.ok?'':'off'}"><input type="checkbox" data-par="${w.slot}" ${w.ok&&(AUTO.par||PARSEL.has(w.slot))?'checked':''} ${w.ok?dis:'disabled'}>${wIcon(w.slot)} ${esc(wName(w.slot))}<small>${w.kind==='cpu'?'x264 / x265 – beste Qualität':w.ok?(w.kind==='dgpu'?'eigene Grafikkarte':'Prozessor-Grafik')+' · '+(w.enc.h265.split('_')[1]||'Software').toUpperCase():'Encoder geht nicht'}</small></label>`).join('')+
+    (all.length<2?'<div class="hint" style="margin:0">Keine Grafikkarte mit Video-Encoder gefunden – es arbeitet nur der Prozessor.</div>':'');
+  $$('[data-par]').forEach(c=>c.onchange=()=>{c.checked?PARSEL.add(c.dataset.par):PARSEL.delete(c.dataset.par);updSums()});
+  const gp=all.filter(w=>w.kind!=='cpu');
+  $('#parInfo').innerHTML=gp.length>1?'Zwei Grafikkarten: Windows wird gesagt, dass FFmpeg die eigene Karte nimmt und eine zweite FFmpeg-Kopie die Prozessor-Grafik. Ein einzelner Film wird dadurch nicht schneller – mehrere Filme laufen gleichzeitig. Im Task-Manager siehst du es bei „Video Encode“.':
+    gp.length?'Prozessor und Grafikkarte arbeiten gleichzeitig an verschiedenen Filmen.':'';
+}
+
 /* ================= ECHTES PROGRAMM: Anbindung an den Kern (ffmpeg) ================= */
 var INFO=null;
 function eToQ(e){return {id:++uid,fid:e.id,name:e.name,path:e.path,size:e.size,w:e.w||0,h:e.h||0,dur:e.dur||0,fps:e.fps||25,hdr:e.hdr,
@@ -1780,8 +1841,11 @@ async function realStart(){
     await new Promise(res=>{WAIT=setInterval(()=>{const left=(at-new Date())/1000;$('#monFile').textContent='Start in '+fmtT(left);if(left<=0||!RUN.on){clearInterval(WAIT);WAIT=null;res()}},1000)});
     if(!RUN.on)return;
   }
-  const items=todo.map(q=>{const a=analyze(q,settings());q.a=a;return {id:q.fid,passes:a.job.passes,outname:a.job.outname,outdir:settings().out.dir}});
-  try{const r=await api('/api/convert',{items});r.jobs.forEach((j,i)=>{todo[i].jid=j.id;todo[i].state='queued';todo[i].prog=0})}
+  const pl=planJobs(todo);
+  const items=pl.plan.map(p=>{p.q.a=p.a;p.q.slot=p.slot;return {id:p.q.fid,passes:p.a.job.passes,outname:p.a.job.outname,outdir:settings().out.dir,slot:p.slot}});
+  if(pl.slots.length>1){log('ai','KI verteilt: '+pl.plan.map(p=>`${esc(p.q.name)} → ${wIcon(p.slot)} ${esc(wName(p.slot))}${p.slot==='cpu'?' (x265)':''}`).join(' · '));
+    if(pl.single>pl.par*1.1)log('ai',`Geschätzt fertig in ${fmtT(pl.par)} statt ${fmtT(pl.single)} nacheinander.`)}
+  try{const r=await api('/api/convert',{items});r.jobs.forEach((j,i)=>{const q=pl.plan[i].q;q.jid=j.id;q.state='queued';q.prog=0})}
   catch(err){toast('Start fehlgeschlagen: '+err.message);RUN.on=false;$('#bStart').disabled=false;$('#bStop').disabled=true;return}
   log('ai',`KI: Starte ${todo.length} Datei(en) mit ${$('#sEnc').selectedOptions[0].text} → ${esc(s.out.dir)}`);
   $('#bPause').disabled=false;renderQ();
@@ -1789,7 +1853,7 @@ async function realStart(){
   clearInterval(POLL);POLL=setInterval(async()=>{
     let r;try{r=await api('/api/jobs')}catch(e){return}
     const byId={};r.jobs.forEach(j=>byId[j.id]=j);
-    let running=null;
+    let running=null;const runs=[];
     for(const q of Q){const j=q.jid&&byId[q.jid];if(!j)continue;
       const ns={läuft:'run',wartet:'queued',fertig:'done',fehler:'err',abgebrochen:'stop'}[j.state]||q.state;
       if(ns!==q.state){
@@ -1799,11 +1863,12 @@ async function realStart(){
         if(ns==='stop')log('bad',`Abgebrochen: ${esc(q.name)}`);
         q.state=ns;renderQ();
       }
-      q.prog=j.pct/100;if(ns==='run'){running={q,j}}
+      q.prog=j.pct/100;if(ns==='run'){running=running||{q,j};runs.push({q,j})}
       const el=document.querySelector(`.qi[data-id="${q.id}"] .bar i`);if(el)el.style.width=j.pct+'%';
     }
     const mine=Q.filter(q=>q.jid&&byId[q.jid]);
     const all=mine.length?mine.reduce((s,q)=>s+q.prog,0)/mine.length*100:0;setSeg(all);
+    $('#monRun').innerHTML=runs.length>1?runs.map(({q,j})=>`<div>${wIcon(q.slot)} <b>${esc(wName(q.slot))}</b> · ${esc(q.name)} · ${Math.floor(j.pct)} % · ${Math.round(j.fps)} fps</div>`).join(''):'';
     if(running){const {q,j}=running,a=q.a;$('#monFile').textContent=q.name+(j.pass&&q.a.job.passes.length>1?` · Durchgang ${j.pass}/2`:'');
       $('#mPct').textContent=Math.floor(j.pct)+' %';$('#mSpd').textContent=`${Math.round(j.fps)} fps · ${String(j.speed.toFixed(2)).replace('.',',')}×`;
       $('#mBr').textContent=j.kbps?Math.round(j.kbps).toLocaleString('de-DE')+' kbit/s':'–';$('#mEta').textContent=j.eta!=null?fmtT(j.eta):'–';
@@ -1922,7 +1987,7 @@ async function realTmdb(){
 async function realInit(){
   document.body.classList.add('real');
   try{INFO=await api('/api/info')}catch(err){toast('Programm-Kern nicht erreichbar: '+err.message);return}
-  $('#verBadge').textContent='Version '+INFO.version+(INFO.gpus&&INFO.gpus.length?' · '+INFO.gpus[0]:'');
+  $('#verBadge').textContent='Version '+INFO.version+(INFO.gpus&&INFO.gpus.length?' · '+INFO.gpus.map(g=>g.name.replace(/\(TM\)|\(R\)|Graphics/gi,'').replace(/\s+/g,' ').trim()).join(' + '):'');
   if(!INFO.ffmpeg)toast('FFmpeg fehlt – bitte das Programm neu installieren.');
   if(INFO.config.tmdb)$('#cTmdb').value=INFO.config.tmdb;
   $('#oTopic').value=INFO.config.ntfy||('butchies-'+Math.random().toString(36).slice(2,10));

@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 APP_NAME = 'Butchies Video Converter'
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 UI = BASE / 'ui'
@@ -165,27 +165,20 @@ def show_in_folder(path):
         webbrowser.open(path.parent.as_uri() if path.is_file() else path.as_uri())
 
 
-# ---------- Encoder / Grafikkarte ----------
-def hw_check():
-    try:
-        listed = run([FFMPEG, '-hide_banner', '-encoders'], timeout=30).stdout.decode('utf-8', 'replace') if FFMPEG else ''
-        filt = run([FFMPEG, '-hide_banner', '-filters'], timeout=30).stdout.decode('utf-8', 'replace') if FFMPEG else ''
-        FILTERS['libvmaf'] = ' libvmaf ' in filt
-        FILTERS['zscale'] = ' zscale ' in filt
-        for enc in ('libx264', 'libx265') + HW_ENCODERS:
-            if (' ' + enc + ' ') not in listed:
-                HW[enc] = False
-            elif enc.startswith('lib'):
-                HW[enc] = True
-            else:
-                try:
-                    r = run([FFMPEG, '-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'color=black:s=256x256:d=0.2', '-frames:v', '2',
-                             '-c:v', enc, '-f', 'null', '-'], timeout=25)
-                    HW[enc] = r.returncode == 0
-                except Exception:  # noqa: BLE001
-                    HW[enc] = False
-    finally:
-        HW_DONE.set()
+# ---------- Encoder / Grafikkarten ----------
+FFMPEG_IGPU = [None]   # Kopie von ffmpeg.exe, die Windows auf die zweite (integrierte) Grafikkarte schickt
+WORKERS = []           # Arbeiter: Prozessor + bis zu 2 Grafikkarten
+HW2 = {}               # Encoder auf der zweiten Grafikkarte -> funktioniert?
+SUFFIX = {'amd': 'amf', 'nvidia': 'nvenc', 'intel': 'qsv'}
+
+
+def gpu_info(name, vram=0):
+    n = name.lower()
+    vendor = 'nvidia' if re.search(r'nvidia|geforce|rtx|gtx|quadro', n) else 'amd' if re.search(r'amd|radeon', n) else \
+        'intel' if 'intel' in n else 'andere'
+    igpu = bool(re.search(r'\d{3}m\b|radeon\(tm\) graphics|vega \d+|uhd|iris|hd graphics', n))
+    dgpu = bool(re.search(r'\brx\s?\d|geforce|rtx|gtx|quadro|radeon pro|\barc\b|titan', n)) or (vram >= 3.5 and not igpu)
+    return {'name': name, 'vram': vram, 'vendor': vendor, 'kind': 'dgpu' if dgpu else 'igpu'}
 
 
 def detect_gpus():
@@ -205,13 +198,99 @@ def detect_gpus():
                     try:
                         with winreg.OpenKey(k, sub) as d:
                             name = str(winreg.QueryValueEx(d, 'DriverDesc')[0])
+                            mem = 0
+                            for val in ('HardwareInformation.qwMemorySize', 'HardwareInformation.MemorySize'):
+                                try:
+                                    v = winreg.QueryValueEx(d, val)[0]
+                                    v = int.from_bytes(v[:8], 'little') if isinstance(v, (bytes, bytearray)) else int(v)
+                                    mem = max(mem, v)
+                                except (OSError, ValueError):
+                                    pass
                     except OSError:
                         continue
-                    if not re.search(r'basic display|basic render|remote|virtual|parsec|citrix', name, re.I):
-                        found.append(name)
+                    if not re.search(r'basic display|basic render|remote|virtual|parsec|citrix|dameware', name, re.I):
+                        found.append(gpu_info(name, round(mem / 1024 ** 3, 1)))
         except Exception:  # noqa: BLE001
             pass
+    found.sort(key=lambda g: (g['kind'] != 'dgpu', -g['vram']))
     GPU[:] = found
+
+
+def set_gpu_pref(exe, pref):
+    """Windows-Grafikeinstellung pro Programm: 2 = Hochleistung (eigene Grafikkarte), 1 = Energiesparen (Prozessor-Grafik)."""
+    if os.name != 'nt' or not exe:
+        return
+    try:
+        import winreg
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\DirectX\UserGpuPreferences') as k:
+            winreg.SetValueEx(k, str(Path(exe).resolve()), 0, winreg.REG_SZ, 'GpuPreference=%d;' % pref)
+    except OSError:
+        pass
+
+
+def prepare_gpu_exes():
+    if os.name != 'nt' or not FFMPEG:
+        return
+    set_gpu_pref(FFMPEG, 2)
+    if len(GPU) < 2:
+        return
+    dst = Path(FFMPEG).with_name('ffmpeg-igpu.exe')
+    try:
+        if not dst.is_file() or dst.stat().st_size != Path(FFMPEG).stat().st_size:
+            shutil.copy2(FFMPEG, dst)
+        FFMPEG_IGPU[0] = str(dst)
+        set_gpu_pref(dst, 1)
+    except OSError:
+        FFMPEG_IGPU[0] = None
+
+
+def enc_works(exe, enc):
+    try:
+        r = run([exe, '-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'color=black:s=256x256:d=0.2', '-frames:v', '2',
+                 '-c:v', enc, '-f', 'null', '-'], timeout=25)
+        return r.returncode == 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def hw_check():
+    try:
+        detect_gpus()
+        prepare_gpu_exes()
+        listed = run([FFMPEG, '-hide_banner', '-encoders'], timeout=30).stdout.decode('utf-8', 'replace') if FFMPEG else ''
+        filt = run([FFMPEG, '-hide_banner', '-filters'], timeout=30).stdout.decode('utf-8', 'replace') if FFMPEG else ''
+        FILTERS['libvmaf'] = ' libvmaf ' in filt
+        FILTERS['zscale'] = ' zscale ' in filt
+        for enc in ('libx264', 'libx265') + HW_ENCODERS:
+            if (' ' + enc + ' ') not in listed:
+                HW[enc] = False
+            elif enc.startswith('lib'):
+                HW[enc] = True
+            else:
+                HW[enc] = enc_works(FFMPEG, enc)
+        ws = [{'slot': 'cpu', 'name': 'Prozessor', 'kind': 'cpu', 'vendor': '', 'enc': {'h264': 'libx264', 'h265': 'libx265'},
+               'ok': bool(HW.get('libx265'))}]
+        for i, g in enumerate(GPU[:2]):
+            suf = SUFFIX.get(g['vendor'])
+            if not suf:
+                continue
+            enc = {'h264': 'h264_' + suf, 'h265': 'hevc_' + suf}
+            if i == 0:
+                ok = HW.get(enc['h265']) or HW.get(enc['h264'])
+            else:
+                exe = FFMPEG_IGPU[0]
+                for e in enc.values():
+                    HW2[e] = bool(exe) and enc_works(exe, e)
+                ok = HW2.get(enc['h265']) or HW2.get(enc['h264'])
+            ws.append({'slot': 'gpu%d' % (i + 1), 'name': g['name'], 'kind': g['kind'], 'vendor': g['vendor'], 'enc': enc, 'ok': bool(ok),
+                       'hevc': bool((HW if i == 0 else HW2).get(enc['h265']))})
+        if os.environ.get('BVC_FAKE_GPU'):    # nur zum Testen ohne Grafikkarte
+            for i, n in enumerate(('Test Radeon RX 7700 XT', 'Test Radeon 760M Graphics')):
+                ws.append({'slot': 'gpu%d' % (i + 1), 'name': n, 'kind': 'dgpu' if i == 0 else 'igpu', 'vendor': 'amd',
+                           'enc': {'h264': 'libx264', 'h265': 'libx265'}, 'ok': True, 'hevc': True})
+        WORKERS[:] = ws
+    finally:
+        HW_DONE.set()
 
 
 # ---------- Dateien prüfen (ffprobe) ----------
@@ -379,7 +458,8 @@ def new_job(item):
         name += '.mkv'
     folder = Path(item.get('outdir') or outdir())
     jid = secrets.token_hex(6)
-    j = {'id': jid, 'fid': e['id'], 'src': e['path'], 'name': e['name'], 'folder': str(folder), 'outname': name, 'passes': passes,
+    slot = item.get('slot') if item.get('slot') in ('cpu', 'gpu1', 'gpu2') else 'cpu'
+    j = {'id': jid, 'slot': slot, 'fid': e['id'], 'src': e['path'], 'name': e['name'], 'folder': str(folder), 'outname': name, 'passes': passes,
          'dur': e.get('dur') or 0, 'state': 'wartet', 'pct': 0.0, 'fps': 0, 'speed': 0, 'kbps': 0, 'size': 0, 'eta': None,
          'error': '', 'out': '', 'proc': None, 'paused': False, 'cancel': False, 'started': 0, 'pass': 0}
     with QLOCK:
@@ -414,11 +494,15 @@ def run_job(j):
     work = STAGE / ('job-' + j['id'])
     work.mkdir(parents=True, exist_ok=True)
     j['state'], j['started'] = 'läuft', time.time()
+    if j['cancel']:
+        j['state'] = 'abgebrochen'
+        return
     n = len(j['passes'])
     log = []
     for i, args in enumerate(j['passes']):
         j['pass'] = i + 1
-        cmd = [FFMPEG, '-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats'] + fill_args(args, j['src'], str(tmp))
+        exe = FFMPEG_IGPU[0] if j.get('slot') == 'gpu2' and FFMPEG_IGPU[0] else FFMPEG
+        cmd = [exe, '-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats'] + fill_args(args, j['src'], str(tmp))
         p = popen(cmd, cwd=str(work))
         j['proc'] = p
         errbuf = []
@@ -459,14 +543,17 @@ def run_job(j):
     shutil.rmtree(work, ignore_errors=True)
 
 
-def worker():
+def worker(slot='cpu'):
+    """Ein Arbeiter pro Prozessor / Grafikkarte – so laufen mehrere Videos gleichzeitig."""
     while True:
-        QEVENT.wait()
         with QLOCK:
-            jid = next((x for x in QUEUE if JOBS.get(x, {}).get('state') == 'wartet'), None)
-            if not jid:
-                QEVENT.clear()
-                continue
+            jid = next((x for x in QUEUE if JOBS.get(x, {}).get('state') == 'wartet' and JOBS[x].get('slot', 'cpu') == slot), None)
+            if jid:
+                JOBS[jid]['state'] = 'läuft'
+        if not jid:
+            QEVENT.wait(1)
+            QEVENT.clear()
+            continue
         j = JOBS[jid]
         try:
             run_job(j)
@@ -945,7 +1032,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/info':
                 HW_DONE.wait(20)
                 conf = load_config()
-                return self.send_json(200, {'version': VERSION, 'ffmpeg': bool(FFMPEG and FFPROBE), 'hw': HW, 'filters': FILTERS, 'gpus': GPU,
+                return self.send_json(200, {'version': VERSION, 'ffmpeg': bool(FFMPEG and FFPROBE), 'hw': HW, 'filters': FILTERS, 'gpus': GPU, 'workers': WORKERS,
                                             'disks': disks(), 'outdir': outdir(), 'config': conf, 'native': NATIVE[0]})
             if path == '/api/jobs':
                 return self.send_json(200, {'jobs': [job_view(JOBS[j]) for j in QUEUE if j in JOBS]})
@@ -1477,6 +1564,18 @@ def selftest():
         o = probe(j['out'])
         check('Ergebnis lesbar', o['w'] == 960 and o['vcodec'] == 'hevc' and len(o['tracks']['audio']) == 1 and len(o['tracks']['subs']) == 1,
               {k: o.get(k) for k in ('w', 'h', 'vcodec', 'dur')})
+    print('     Grafikkarten: %s' % [g['name'] + ' (' + g['kind'] + ')' for g in GPU], flush=True)
+    print('     Arbeiter: %s' % [(w['slot'], w['name'], w['ok']) for w in WORKERS], flush=True)
+    for slot in ('cpu', 'gpu1'):
+        threading.Thread(target=worker, args=(slot,), daemon=True).start()
+    fast = ['-i', '{IN}', '-map', '0:v:0', '-c:v', 'libx264', '-preset', 'ultrafast', '-an', '{OUT}']
+    pj = [new_job({'id': e['id'], 'passes': [fast], 'outname': 'parallel-%s.mkv' % sl, 'outdir': str(outd), 'slot': sl}) for sl in ('cpu', 'gpu1')]
+    QEVENT.set()
+    both, t0 = False, time.time()
+    while time.time() - t0 < 120 and any(x['state'] in ('wartet', 'läuft') for x in pj):
+        both = both or all(x['state'] == 'läuft' for x in pj)
+        time.sleep(0.05)
+    check('Parallel umwandeln (2 Arbeiter)', all(x['state'] == 'fertig' for x in pj), [x['slot'] + ':' + x['state'] for x in pj] + ['gleichzeitig' if both else 'nacheinander'])
     tid = secrets.token_hex(4)
     TASKS[tid] = {'state': 'läuft'}
     try:
@@ -1519,8 +1618,8 @@ def main():
         sys.exit(0 if ok else 1)
     HOME.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=hw_check, daemon=True).start()
-    threading.Thread(target=detect_gpus, daemon=True).start()
-    threading.Thread(target=worker, daemon=True).start()
+    for slot in ('cpu', 'gpu1', 'gpu2'):
+        threading.Thread(target=worker, args=(slot,), daemon=True).start()
     port = 0
     if '--port' in sys.argv:
         port = int(sys.argv[sys.argv.index('--port') + 1])

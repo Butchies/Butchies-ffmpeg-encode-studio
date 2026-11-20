@@ -1,4 +1,4 @@
-**Butchies Video Converter AI 1.0.0**: Videos mit KI-Hilfe in H.264 / H.265 umwandeln. Dazu gibt es einen Player für alle Codecs, einen Vorher/Nachher-Vergleich und einen Ordner-Abgleich.
+**Butchies Video Converter AI 1.1.0**: Videos mit KI-Hilfe in H.264 / H.265 umwandeln. Dazu gibt es einen Player für alle Codecs, einen Vorher/Nachher-Vergleich und einen Ordner-Abgleich.
 
 **Installieren:** `Butchies_Video_Converter-Setup.exe` herunterladen und starten. Du brauchst dafür keine Administratorrechte.
 Der Installer sucht das **Laufwerk mit dem meisten freien Speicher** und schlägt dort Programm- und Video-Ordner vor.
@@ -16,3 +16,9 @@ FFmpeg mit allen Codecs ist dabei (inklusive VMAF-Messung und HDR). WebView2 wir
   - Bei geschützten Ordnern (NAS) wird nichts endgültig gelöscht, sondern nur in einen Ordner „_Papierkorb“ verschoben
 - **Nachtmodus:** Start zu einer festen Uhrzeit, danach den PC herunterfahren oder in den Ruhezustand schicken, Nachricht aufs Handy (ntfy)
 - 7 Designs, Start- und Abschieds-Animation wie im ffmpeg_encode Studio
+
+**Neu in 1.1.0: zwei Grafikkarten und paralleles Umwandeln**
+- Das Programm erkennt Prozessor-Grafik (z. B. Radeon 760M) und eigene Grafikkarte (z. B. Radeon RX 7000) getrennt
+- FFmpeg wird bei Windows fest auf die **eigene Grafikkarte** eingestellt. Eine zweite FFmpeg-Kopie nutzt die Prozessor-Grafik
+- **⚡ Prozessor & Grafikkarten** (Auto/Manuell): Die KI verteilt mehrere Videos gleichzeitig auf Prozessor (x265, beste Qualität), eigene Karte und Prozessor-Grafik. Dabei bleibt die Qualität mindestens „Gut“
+- Im KI-Monitor siehst du, welcher Film gerade wo läuft, dazu die geschätzte Zeitersparnis

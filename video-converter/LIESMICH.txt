@@ -29,6 +29,12 @@ Findet gleiche Filme am Namen, am Bild (auch bei anderem Namen) und per Prüfsum
 🗑 löschen (geschützte Ordner: nur in den Ordner „_Papierkorb“), ⚙ verarbeiten, ✏️ umbenennen.
 Freiwillig: TMDB-Schlüssel für deutsche Original-Titel.
 
+Zwei Grafikkarten (ab 1.1.0)
+----------------------------
+„⚡ Prozessor & Grafikkarten“: Bei mehreren Videos arbeiten Prozessor, eigene Grafikkarte und
+Prozessor-Grafik gleichzeitig. Ein einzelner Film wird dadurch nicht schneller, die ganze
+Warteschlange aber deutlich. Im Task-Manager unter „Leistung → GPU → Video Encode“ sichtbar.
+
 Handy-Nachricht
 ---------------
 App „ntfy“ aufs Handy, das im Programm angezeigte Thema abonnieren, Haken setzen – fertig.
