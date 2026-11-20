@@ -215,7 +215,7 @@ def lyric_features(lines, beats):
 
 
 # ---------- Vorschläge ----------
-def suggest(A, length, lines=None):
+def suggest(A, length, lines=None, learned=None):
     bt, E, R, ph = A['beats'], A['energy'], A['rep'], A['phase']
     total = A['total']
     nb = len(bt)
@@ -247,6 +247,21 @@ def suggest(A, length, lines=None):
         j = min(nb - 1, i + lead)
         return 0.7 * max(0, rise[max(0, j - 2):j + 3].max()) + 0.4 * E[s].mean()
 
+    def feat(i):
+        s = win(i)
+        return {'energy': float(E[s].mean()), 'rep': float(R[s].mean()), 'rise': float(max(0.0, rise[s].max()))}
+
+    L = learned or {}
+    pref, conf = L.get('feat'), float(L.get('conf') or 0)
+
+    def taste(i):
+        """Gelernt: wie nah klingt die Stelle an dem, was der Nutzer bisher gewählt hat (0 … 0,25)."""
+        if not pref or conf <= 0:
+            return 0.0
+        f = feat(i)
+        d = sum(abs(f[k] - pref.get(k, f[k])) for k in f) / len(f)
+        return 0.25 * conf * max(0.0, 1.0 - 2.0 * d)
+
     def emo(i):
         s = win(i)
         e = E[s]
@@ -258,17 +273,27 @@ def suggest(A, length, lines=None):
     kinds = [('chorus', 'Refrain', chorus), ('drop', 'Höhepunkt / Drop', drop), ('emo', 'Emotionaler Aufbau', emo)]
     out = []
     for kind, name, fn in kinds:
-        scored = sorted(((fn(i), i) for i in starts), reverse=True)
+        scored = sorted(((fn(i) + taste(i), i) for i in starts), reverse=True)
         for sc, i in scored:
             a = bt[i]
             if all(abs(a - o['start']) >= length * 0.75 for o in out):
+                sh = float(L.get('shift') or 0)
+                if abs(sh) >= bp * 0.5:                       # gelernt: Nutzer verschiebt meist um sh Sekunden -> auf Schlag runden
+                    k = int(np.argmin(np.abs(bt - (a + sh))))
+                    if bt[k] + length <= total + 0.01:
+                        a = bt[k]
                 a = max(0.0, a - 0.03)                       # Anschlag des ersten Schlags nicht abschneiden
                 end = min(a + length, total)
                 out.append({'kind': kind, 'name': name, 'start': round(float(a), 2), 'end': round(float(end), 2),
-                            'score': round(float(sc), 3), 'why': why(kind, i, n, E, R, rise, lrep, lemo, lyr)})
+                            'score': round(float(sc), 3), 'why': why(kind, i, n, E, R, rise, lrep, lemo, lyr),
+                            'feat': {k: round(v, 4) for k, v in feat(i).items()}})
                 break
     for o in out:
         o['lyric'] = excerpt(lines, o['start'], o['end']) if lyr else ''
+    prefs = L.get('prefs')
+    if prefs and (L.get('n') or 0) >= 2:                  # gelernt: Lieblings-Art zuerst
+        out.sort(key=lambda o: -prefs.get(o['kind'], 0))
+        out[0]['fav'] = True
     return out
 
 

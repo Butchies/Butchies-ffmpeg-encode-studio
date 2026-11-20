@@ -12,6 +12,7 @@ import viz
 import fx
 import highlight
 import lyrics
+import learn
 try:
     import mark          # braucht numpy + OpenCV (+ onnxruntime für die KI)
 except Exception:  # noqa: BLE001
@@ -19,7 +20,7 @@ except Exception:  # noqa: BLE001
 
 APP_NAME = 'ffmpeg_encode Studio'
 APP_DIRNAME = 'ffmpeg_encode Studio'      # Ordnername für Einstellungen/Videos bleibt (deine Daten bleiben erhalten)
-VERSION = '1.6.5'
+VERSION = '1.7.0'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -41,6 +42,7 @@ DEPTH = fx.Depth(MODEL_DIR) if fx.cv2 is not None else None
 GPU = []           # erkannte Grafikkarten [{name, vram, vendor}]
 # Songtext-Modell: liegt seit 1.6.1 direkt im Programm (Installer); sonst Ersatz-Ort im Einstellungsordner
 _WHISPER = 'whisper-' + lyrics.MODEL_NAME
+LEARN = learn.Learner(HOME / 'learn.json')     # Selbst-Lernen (offline)
 LYRICS = lyrics.Lyrics(MODEL_DIR / _WHISPER if (MODEL_DIR / _WHISPER / 'model.bin').is_file() else HOME / 'models' / _WHISPER)
 HL_JOBS = {}       # Stellensuche: id -> {state, percent, phase, result, error}
 HL_CACHE = {}      # (Song-Pfad, mtime) -> Analyse bzw. Songtext
@@ -896,6 +898,49 @@ def gpu_view():
     return {'cards': GPU, 'text': 'Grafikkarte: %s · %s' % (g['name'], mem), 'video_ai': lvl, 'video_text': txt}
 
 
+def song_key(audio):
+    """Wiedererkennung eines Songs über Name + Größe (auch nach erneutem Hineinziehen)."""
+    p = Path(audio['path'])
+    try:
+        size = p.stat().st_size
+    except OSError:
+        size = 0
+    return '%s|%d' % (audio.get('name') or p.name, size)
+
+
+UPDATE = {'t': 0, 'data': None}
+
+
+def update_check():
+    """Neueste Version auf GitHub (höchstens alle 6 Stunden nachsehen)."""
+    if UPDATE['data'] is not None and time.time() - UPDATE['t'] < 6 * 3600:
+        return UPDATE['data']
+    import urllib.request
+    res = {'current': VERSION, 'latest': '', 'newer': False, 'url': ''}
+    try:
+        req = urllib.request.Request('https://api.github.com/repos/Butchies/Butchies-ffmpeg-encode-studio/releases?per_page=20',
+                                     headers={'User-Agent': 'ffmpeg_encode-Studio', 'Accept': 'application/vnd.github+json'})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            rel = json.loads(r.read().decode('utf-8'))
+        vers = []
+        for x in rel:
+            m = re.fullmatch(r'encoder-v(\d+)\.(\d+)\.(\d+)', x.get('tag_name') or '')
+            if m and not x.get('draft'):
+                vers.append((tuple(int(g) for g in m.groups()), x.get('html_url') or ''))
+        if vers:
+            best = max(vers)
+            cur = tuple(int(g) for g in VERSION.split('.'))
+            res.update(latest='.'.join(map(str, best[0])), newer=best[0] > cur, url=best[1])
+    except Exception:  # noqa: BLE001
+        res['error'] = 'offline'
+    UPDATE.update(t=time.time(), data=res)
+    return res
+
+
+STYLE_NAMES = {'fx': {e[0]: e[1] for e in fx.EFFECTS}, 'cam': {c[0]: c[1] for c in fx.CAMS},
+               'vizStyle': {v[0]: v[1] for v in viz.STYLES}}
+
+
 def highlight_job(jid, audio, length, with_lyrics):
     """Beste Stelle für Shorts suchen (Hintergrund-Thread)."""
     j = HL_JOBS[jid]
@@ -908,8 +953,12 @@ def highlight_job(jid, audio, length, with_lyrics):
             HL_CACHE[('a',) + key] = highlight.analyse(FFMPEG, p, run, dur)
         A = HL_CACHE[('a',) + key]
         lines, lang = None, ''
+        skey = song_key(audio)
+        fixed = LEARN.song_lines(skey) if with_lyrics else None
+        if fixed is not None and ('l',) + key not in HL_CACHE:   # vom Nutzer korrigierter Text -> direkt nehmen
+            HL_CACHE[('l',) + key] = (fixed, '')
         if with_lyrics:
-            if not LYRICS.model_ok():
+            if not LYRICS.model_ok() and ('l',) + key not in HL_CACHE:
                 raise RuntimeError('Das Songtext-Modell ist noch nicht heruntergeladen.')
             if ('l',) + key not in HL_CACHE:
                 j.update(phase='Songtext wird erkannt (das dauert etwas) …', percent=15)
@@ -918,13 +967,16 @@ def highlight_job(jid, audio, length, with_lyrics):
                     raise RuntimeError('Song konnte nicht gelesen werden')
                 import numpy as np
                 pcm = np.frombuffer(r.stdout, np.int16).astype(np.float32) / 32768.0
-                HL_CACHE[('l',) + key] = LYRICS.transcribe(pcm, lambda pc: j.update(percent=15 + int(pc * 0.8)))
+                HL_CACHE[('l',) + key] = LYRICS.transcribe(pcm, lambda pc: j.update(percent=15 + int(pc * 0.8)),
+                                                           hotwords=LEARN.hotwords())
             lines, lang = HL_CACHE[('l',) + key]
         j.update(phase='Vorschläge werden berechnet …', percent=96)
-        sug = highlight.suggest(A, length, lines)
+        model = LEARN.hl_model()
+        sug = highlight.suggest(A, length, lines, model)
         j.update(state='fertig', percent=100, result={
             'suggestions': sug, 'bpm': round(float(A['bpm']), 1), 'lyrics': bool(with_lyrics),
-            'lines': len(lines or []), 'language': lang,
+            'lines': len(lines or []), 'language': lang, 'text': lines or [], 'fixed': fixed is not None,
+            'learned': model['n'],
             'note': ('Kein Gesang erkannt – die Vorschläge beruhen nur auf dem Klang.' if with_lyrics and not lines else '')})
     except Exception as ex:  # noqa: BLE001
         j.update(state='fehler', error=str(ex) or 'Unbekannter Fehler')
@@ -1099,6 +1151,12 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             j = HL_JOBS.get(m.group(1))
             return self.send_json(200 if j else 404, j or {'error': 'Unbekannte Suche'})
+        if path == '/api/learn':
+            return self.send_json(200, LEARN.summary(DEFAULTS, STYLE_NAMES))
+        if path == '/api/learn/style':
+            return self.send_json(200, {'values': LEARN.style_suggest(DEFAULTS)})
+        if path == '/api/update':
+            return self.send_json(200, update_check())
         if path == '/api/info':
             conf = load_config()
             return self.send_json(200, {
@@ -1233,6 +1291,30 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(400, {'error': 'Die Songtext-Erkennung ist in diesem Programm nicht enthalten.'})
                 LYRICS.download()
                 return self.send_json(200, LYRICS.status())
+            if path == '/api/learn/hl':
+                LEARN.hl_pick(data.get('kind'), data.get('feat'))
+                return self.send_json(200, {'ok': True})
+            if path == '/api/learn/reset':
+                LEARN.reset(data.get('part'))
+                return self.send_json(200, LEARN.summary(DEFAULTS, STYLE_NAMES))
+            if path == '/api/learn/lyrics':
+                a = STAGED.get(data.get('audio') or '')
+                if not a:
+                    return self.send_json(400, {'error': 'Der Song ist nicht mehr geladen.'})
+                new = []
+                for l in data.get('lines') or []:
+                    try:
+                        t = str(l.get('text', '')).strip()[:300]
+                        if t:
+                            new.append({'start': round(float(l['start']), 2), 'end': round(float(l['end']), 2), 'text': t})
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                p = Path(a['path'])
+                key = ('l', str(p), p.stat().st_mtime)
+                old = (HL_CACHE.get(key) or (LEARN.song_lines(song_key(a)) or [], ''))[0]
+                words = LEARN.lyrics_fix(song_key(a), old, new)
+                HL_CACHE[key] = (new, (HL_CACHE.get(key) or ([], ''))[1])
+                return self.send_json(200, {'learned': words, 'total': len(LEARN.hotwords(10000))})
             if path == '/api/highlight':
                 a = STAGED.get(data.get('audio') or '')
                 if not a or a.get('kind') != 'audio':
@@ -1365,10 +1447,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/encode':
                 conf = load_config()
                 conf['settings'] = clean_settings(data.get('settings'))
+                if data.get('hl_adjust'):
+                    LEARN.hl_adjust(data['hl_adjust'].get('ds'), data['hl_adjust'].get('de'))
                 if data.get('outdir'):
                     conf['outdir'] = data['outdir']
                 save_config(conf)
                 job = new_job(data.get('settings'), data.get('audio'), data.get('image'), data.get('outdir'), data.get('outname'))
+                LEARN.style_observe(job['settings'])
                 return self.send_json(200, job_view(job))
             if path == '/api/cancel':
                 cancel_job(data.get('id', ''))

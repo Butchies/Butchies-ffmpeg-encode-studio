@@ -1241,12 +1241,30 @@ function renderHl() {
   $('#hlNote').textContent = note; $('#hlNote').hidden = !note;
   const ic = { chorus: '🎵', drop: '⚡', emo: '💗', all: '🎶' };
   r.suggestions.forEach(sg => box.append(el('div', { class: 'hl-card' },
-    el('div', { class: 'hl-top' }, el('b', {}, `${ic[sg.kind] || '✨'} ${sg.name}`), el('span', { class: 'hl-time' }, `${tstr(sg.start)} – ${tstr(sg.end)}`)),
+    el('div', { class: 'hl-top' }, el('b', {}, `${ic[sg.kind] || '✨'} ${sg.name}`, sg.fav ? el('span', { class: 'hl-fav', title: 'Die KI hat gelernt, dass du diese Art meistens nimmst' }, '★ Dein Favorit') : null), el('span', { class: 'hl-time' }, `${tstr(sg.start)} – ${tstr(sg.end)}`)),
     el('small', {}, sg.why), sg.lyric ? el('q', {}, sg.lyric) : null,
     el('div', { class: 'hl-acts' },
       el('button', { type: 'button', class: 'btn small', onclick: () => playHl(sg) }, '▶ Anhören'),
       el('button', { type: 'button', class: 'btn small glow', onclick: () => applyHl(sg) }, 'Übernehmen')))));
+  box.append(el('div', { class: 'hl-learn' },
+    el('small', {}, r.learned ? `🧠 Die KI hat schon aus ${r.learned} deiner Entscheidungen gelernt` : '🧠 Die KI lernt mit: Was du übernimmst, kommt beim nächsten Mal weiter nach vorne'),
+    r.text && r.text.length ? el('button', { type: 'button', class: 'btn tiny', onclick: openLyrEdit }, r.fixed ? '✏️ Text bearbeiten' : '✏️ Text korrigieren') : null));
 }
+function openLyrEdit() {
+  const box = $('#lyrLines'); box.textContent = '';
+  for (const l of (HL.res && HL.res.text) || [])
+    box.append(el('div', { class: 'lyr-row' }, el('small', {}, tstr(l.start)), el('input', { type: 'text', value: l.text, 'data-s': l.start, 'data-e': l.end, spellcheck: 'false' })));
+  $('#lyrDlg').showModal();
+}
+$('#lyrSave').onclick = async () => {
+  const lines = $$('#lyrLines input').map(i => ({ start: +i.dataset.s, end: +i.dataset.e, text: i.value.trim() })).filter(l => l.text);
+  try {
+    const d = await api('/api/learn/lyrics', { audio: S.audio.token, lines });
+    $('#lyrDlg').close();
+    toast(d.learned.length ? `🧠 Gelernt: ${d.learned.slice(0, 6).join(', ')}${d.learned.length > 6 ? ' …' : ''}` : '✓ Text gespeichert');
+    $('#hlBtn').click();
+  } catch (e) { toast(e.message, true) }
+};
 function playHl(sg) {
   if (!S.audio) return;
   aud.currentTime = sg.start; HL.stopAt = sg.end; aud.play().catch(() => {});
@@ -1257,6 +1275,7 @@ setTimeout(() => {                                   // der Audio-Player wird we
 }, 0);
 function applyHl(sg) {
   const s = S.settings;
+  if (sg.kind !== 'all') { api('/api/learn/hl', { kind: sg.kind, feat: sg.feat }).catch(() => {}); HL.applied = { start: sg.start, end: sg.end } }
   s.start = tstr(sg.start); s.end = tstr(sg.end);
   s.fadeIn = Math.min(s.fadeIn, 0.5); s.fadeOut = Math.min(Math.max(s.fadeOut, 1), 1.5);
   $('#tStart').value = s.start; $('#tEnd').value = s.end;
@@ -1504,6 +1523,7 @@ function adopt(d, quiet) {
   S[d.kind] = d;
   if (d.kind === 'audio') { aud.src = '/api/file/' + d.token; $('#playBtn').disabled = false; $('#seek').disabled = false; $('#tDur').textContent = mmss(d.info.duration); S.outEdited = false; loadWave() }
   drawFiles(); if (!quiet) changed(d.kind); else if (d.kind === 'image') refreshStill();
+  if (d.kind === 'image' && !quiet) offerStyle();
 }
 function drawFiles() {
   const box = $('#files'); box.textContent = '';
@@ -1563,7 +1583,13 @@ function updateGo() {
 }
 async function startJob(show) {
   try {
-    const j = await api('/api/encode', { settings: S.settings, audio: S.audio.token, image: S.image.token, outdir: S.outdir, outname: S.outEdited ? $('#outName').value : '' });
+    let adj = null;
+    if (HL.applied) {                               // Start/Ende nach dem Übernehmen noch verschoben? -> KI lernt den Feinschliff
+      const a = toSec(S.settings.start), b = toSec(S.settings.end);
+      if (a != null && b != null) adj = { ds: a - HL.applied.start, de: b - HL.applied.end };
+      HL.applied = null;
+    }
+    const j = await api('/api/encode', { settings: S.settings, audio: S.audio.token, image: S.image.token, outdir: S.outdir, outname: S.outEdited ? $('#outName').value : '', hl_adjust: adj });
     S.outEdited = false;
     if (show) openProgress(j.id); else toast('In die Warteschlange gelegt: ' + j.name);
     pollJobs();
@@ -1673,7 +1699,7 @@ $('#copyCmd').onclick = async () => { try { await navigator.clipboard.writeText(
 /* ---------- eigenes Programmfenster ---------- */
 function nativeReady() {
   if (!window.pywebview || !window.pywebview.api || document.body.classList.contains('native')) return;
-  document.body.classList.add('native');
+  document.body.classList.add('native'); requestAnimationFrame(fitHeader);
   const w = window.pywebview.api;
   const maxTitle = m => $('#winMax').setAttribute('aria-label', m ? 'Verkleinern' : 'Maximieren');
   $('#winMin').onclick = () => w.minimize();
@@ -1761,6 +1787,18 @@ $('#splash').addEventListener('click', splashLeave);
 const splashTimer = setTimeout(splashLeave, matchMedia('(prefers-reduced-motion: reduce)').matches ? 600 : 3400);
 
 /* ---------- Start ---------- */
+function fitHeader() {                 // Kopfzeile passt sich an: erst Schild kürzen, dann ausblenden, dann nur Symbole
+  const t = $('header.top'); if (!t) return;
+  t.classList.remove('c1', 'c2', 'c3');
+  for (const c of ['c1', 'c2', 'c3']) { if (t.scrollWidth <= t.clientWidth + 1) break; t.classList.add(c) }
+}
+window.addEventListener('resize', () => requestAnimationFrame(fitHeader));
+function setVerBadge(info) {          // wie im Video Converter: Version + Grafikkarten
+  const names = ((info.gpu && info.gpu.cards) || []).map(g => g.name.replace(/\(TM\)|\(R\)|Graphics/gi, '').replace(/\s+/g, ' ').trim());
+  const b = $('#verBadge'); b.textContent = ''; b.append('Version ' + info.version, names.length ? el('span', { class: 'vb-gpu' }, ' · ' + names.join(' + ')) : '');
+  b.title = b.textContent; b.hidden = false;
+  requestAnimationFrame(fitHeader);
+}
 applyTheme(S.theme);
 (async function init() {
   try {
@@ -1776,6 +1814,7 @@ applyTheme(S.theme);
     $('#gpuText').textContent = info.gpu ? info.gpu.text : '';
     $('#aiText').textContent = info.ai ? (info.ai.model ? '✨ ' : '') + info.ai.text : '';
     $('#verText').textContent = info.version;
+    setVerBadge(info);
     $('#ffDot').className = 'dot ' + (info.ffmpeg ? 'ok' : 'bad');
     $('#ffText').textContent = info.ffmpeg ? 'FFmpeg bereit' : 'FFmpeg fehlt';
     $('#ffWarn').hidden = info.ffmpeg;
@@ -1783,7 +1822,7 @@ applyTheme(S.theme);
     // Encoder-Prüfung läuft im Hintergrund – nachladen
     const recheck = async (n) => {
       const i = await api('/api/info').catch(() => null); if (!i) return;
-      S.info.encoders = i.encoders; S.info.hw_done = i.hw_done; S.info.auto_enc = i.auto_enc; renderEnc(); updateGo();
+      setVerBadge(i); S.info.encoders = i.encoders; S.info.hw_done = i.hw_done; S.info.auto_enc = i.auto_enc; renderEnc(); updateGo();
       const hw = Object.entries(i.encoders).filter(([k, v]) => v.ok && !['x264', 'x265'].includes(k)).map(([k]) => ENC_NAME[k]);
       const pending = !i.hw_done;
       $('#hwText').textContent = pending ? 'Grafikkarte wird geprüft …' : hw.length ? '⚡ Grafikkarte nutzbar: ' + hw.join(', ') : 'Keine nutzbare Grafikkarte – CPU wird genutzt';
@@ -1794,3 +1833,65 @@ applyTheme(S.theme);
   } catch (e) { toast('Das Programm antwortet nicht – bitte neu starten', true) }
 })();
 setInterval(() => api('/api/ping').catch(() => {}), 15000);
+
+/* ---------- Selbst-Lernen (1.7.0) ---------- */
+const LN = { styleOffered: false };
+function actToast(msg, label, fn) {
+  const t = el('div', { class: 'toast act' }, el('span', {}, msg), el('button', { type: 'button', class: 'btn small glow', onclick: () => { t.remove(); fn() } }, label));
+  $('#toasts').append(t); setTimeout(() => t.remove(), 12000);
+}
+async function applyStyle(silent) {
+  try {
+    const d = await api('/api/learn/style');
+    if (!d.values || !Object.keys(d.values).length) { if (!silent) toast('Noch nicht genug gelernt – nach ein paar Videos klappt das.', true); return }
+    S.settings = Object.assign({}, S.settings, d.values);
+    changed('fmt'); renderViz(true); renderFx();
+    toast('✓ Dein gelernter Stil ist eingestellt');
+  } catch (e) { toast(e.message, true) }
+}
+async function offerStyle() {
+  if (LN.styleOffered) return;
+  const d = await api('/api/learn/style').catch(() => null);
+  if (!d || !d.values || !Object.keys(d.values).length) return;
+  LN.styleOffered = true;
+  actToast('🧠 Die KI kennt deinen Stil (Effekte, Kamera, Wellen).', 'Übernehmen', () => applyStyle());
+}
+const lnCard = (title, reset, ...kids) => el('div', { class: 'ln-card' },
+  el('h3', {}, title, reset ? el('button', { type: 'button', class: 'btn tiny', onclick: () => resetLearn(reset) }, 'Vergessen') : null), ...kids);
+async function drawLearn() {
+  const d = await api('/api/learn'), box = $('#lnList'); box.textContent = '';
+  const h = d.hl;
+  box.append(lnCard('🎯 Beste Stelle für Shorts', h.n ? 'hl' : '',
+    h.n ? el('p', {}, 'Aus ', el('b', {}, `${h.n} Entscheidung${h.n === 1 ? '' : 'en'}`), ' gelernt. Am liebsten nimmst du: ', el('b', {}, h.fav), '.') : el('p', {}, 'Noch nichts gelernt. Nimm bei „Beste Stelle finden“ einen Vorschlag – die KI merkt sich, was dir gefällt.'),
+    h.taste ? el('p', {}, 'Du magst ', el('b', {}, h.taste), '.') : null,
+    Math.abs(h.shift) >= 0.3 ? el('p', {}, 'Du startest meist ', el('b', {}, `${Math.abs(h.shift).toFixed(1).replace('.', ',')} s ${h.shift < 0 ? 'früher' : 'später'}`), ' – die Vorschläge machen das jetzt automatisch.') : null,
+    h.n ? el('div', { class: 'ln-meter', title: 'Sicherheit' }, el('i', { style: `width:${h.conf}%` })) : null,
+    h.n ? el('p', {}, `Sicherheit ${h.conf} % · ` + Object.entries(h.picks).map(([k, v]) => `${k}: ${v}`).join(' · ')) : null));
+  box.append(lnCard('🎤 Songtext-Wörter', d.word_count ? 'words' : '',
+    d.word_count ? el('p', {}, el('b', {}, `${d.word_count} Wörter`), ` gelernt${d.songs ? ` aus ${d.songs} korrigierten Song${d.songs === 1 ? '' : 's'}` : ''} – Whisper bekommt sie beim Erkennen als Hilfe mit.`) : el('p', {}, 'Noch keine Wörter. Korrigiere nach „Mit Songtext“ falsch erkannte Zeilen – die KI lernt deine Wörter.'),
+    d.words.length ? el('div', { class: 'ln-words' }, ...d.words.slice(0, 30).map(w => el('span', {}, w))) : null));
+  const st = d.style;
+  box.append(lnCard('🎨 Dein Stil', st.n ? 'style' : '',
+    st.ready ? el('p', {}, 'Aus ', el('b', {}, `${st.n} Videos`), ' gelernt' + (Object.keys(st.top).length ? ': ' : '.'), el('b', {}, Object.values(st.top).join(' · '))) : el('p', {}, st.n ? `${st.n} von 3 Videos – nach ${st.need} weiteren schlägt die KI deinen Stil bei neuen Bildern vor.` : 'Noch nichts gelernt. Nach 3 Videos schlägt die KI deine Lieblings-Effekte und Regler-Werte vor.'),
+    !st.ready ? el('div', { class: 'ln-meter' }, el('i', { style: `width:${Math.min(100, st.n / 3 * 100)}%` })) : null,
+    st.ready ? el('div', { class: 'ln-acts' }, el('button', { type: 'button', class: 'btn small glow', onclick: () => { $('#learnDlg').close(); applyStyle() } }, 'Meinen Stil jetzt einstellen')) : null));
+  if (LN.update === undefined) LN.update = await api('/api/update').catch(() => null);
+  const u = LN.update;
+  box.append(lnCard('⬆️ Neue KI-Versionen', '',
+    el('p', {}, u ? (u.newer ? `Neue Version ${u.latest} ist da (du hast ${u.current}).` : u.latest ? `Du hast die neueste Version (${u.current}).` : 'Keine Verbindung zu GitHub – wird beim nächsten Start erneut geprüft.') : 'Wird geprüft …'),
+    u && u.newer ? el('div', { class: 'ln-acts' }, el('button', { type: 'button', class: 'btn small glow', onclick: () => api('/api/open-url', { url: u.url }) }, 'Jetzt herunterladen')) : null));
+}
+async function resetLearn(part) {
+  const what = { hl: 'die gelernte beste Stelle', words: 'die gelernten Songtext-Wörter und korrigierten Texte', style: 'deinen gelernten Stil' }[part] || 'alles Gelernte';
+  if (!await ask('Vergessen?', `Soll die KI ${what} vergessen? Das lässt sich nicht rückgängig machen.`, 'Vergessen')) { $('#learnDlg').showModal(); return }
+  await api('/api/learn/reset', { part: part || 'all' }).catch(e => toast(e.message, true));
+  toast('✓ Vergessen'); if (!$('#learnDlg').open) $('#learnDlg').showModal(); drawLearn();
+}
+$('#learnBtn').onclick = () => { $('#lnList').textContent = ''; $('#learnDlg').showModal(); drawLearn().catch(e => toast(e.message, true)) };
+$('#lnResetAll').onclick = () => resetLearn('');
+$('#updLater').onclick = () => { $('#updBar').hidden = true };
+$('#updGo').onclick = () => { if (LN.update) api('/api/open-url', { url: LN.update.url }) };
+setTimeout(async () => {
+  const u = await api('/api/update').catch(() => null); LN.update = u;
+  if (u && u.newer) { $('#updText').textContent = `⬆️ Neue Version ${u.latest} ist verfügbar (mit verbesserter KI und Fehlerkorrekturen) – du hast ${u.current}.`; $('#updBar').hidden = false }
+}, 2500);

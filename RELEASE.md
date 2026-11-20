@@ -1,4 +1,4 @@
-**ffmpeg_encode Studio 1.6.5** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
+**ffmpeg_encode Studio 1.7.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
 
 **Installieren:** `ffmpeg_encode_Studio-Setup.exe` herunterladen und starten. Es werden keine Administratorrechte gebraucht.
 FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingerichtet.
@@ -9,6 +9,15 @@ FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingeric
 - Audio-Visualizer (Wellenform/Spektrum) in Design- oder eigener Farbe
 - Grafikkarte automatisch (NVIDIA NVENC, Intel Quick Sync, AMD AMF), sonst CPU – mit automatischem Rückfall
 - Fortschritt in Prozent, Warteschlange, 7 Designs und Start-/Abschieds-Animation der Butchies-Webseite
+
+**Neu in 1.7.0 – die KI lernt mit**
+- **Beste Stelle lernt dich kennen:** merkt sich, welchen Vorschlag du nimmst (Refrain, Drop oder Emotional), wie deine Lieblingsstellen klingen und ob du Start/Ende danach noch verschiebst – dein Favorit kommt nach vorne (★ Dein Favorit) und der Start passt sich an
+- **Songtext lernt deine Wörter:** „✏️ Text korrigieren“ nach der Erkennung – korrigierte Wörter (z. B. Namen) bekommt Whisper bei den nächsten Songs als Hilfe mit; korrigierte Texte werden für den Song gespeichert
+- **Dein Stil:** nach 3 Videos kennt die KI deine Lieblings-Effekte, Kamera und Regler-Werte und schlägt sie bei neuen Bildern vor („Übernehmen“)
+- **Neues Fenster „KI lernt“** (Kopfzeile): zeigt, was gelernt wurde – jeden Teil oder alles kannst du mit „Vergessen“ zurücksetzen
+- **Update-Hinweis:** das Programm meldet, wenn eine neue Version (z. B. mit besserer KI) da ist
+- Alles bleibt offline auf deinem PC (Datei learn.json im Einstellungsordner)
+- Kopfzeile wie beim Video Converter: „AI“-Logo im Titel und Schild mit Version + Grafikkarten; passt sich an kleinere Bildschirme an
 
 **Neu in 1.6.5**
 - Fehler behoben: Die Partikel-Menge (Staub, Schnee, Funken, Glitzer, Regen, Linien, Bokeh) hing von der Auflösung ab – im fertigen Video waren es je nach Format 3- bis 12-mal mehr Partikel als eingestellt und in der Vorschau gezeigt. Jetzt sieht das Video genau wie die Vorschau aus, und „Menge“ wirkt wie eingestellt.

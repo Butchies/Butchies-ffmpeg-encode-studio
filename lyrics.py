@@ -93,13 +93,19 @@ class Lyrics:
             self.model = WhisperModel(str(self.folder), device='cpu', compute_type='int8', cpu_threads=threads)
         return self.model
 
-    def transcribe(self, samples_16k, progress=None):
-        """samples_16k: float32-numpy (mono, 16 kHz). Rückgabe: [{start, end, text}], Sprache."""
+    def transcribe(self, samples_16k, progress=None, hotwords=None):
+        """samples_16k: float32-numpy (mono, 16 kHz). Rückgabe: [{start, end, text}], Sprache.
+        hotwords: gelernte Wörter des Nutzers (aus seinen Korrekturen) – helfen Whisper bei Namen und eigenen Wörtern."""
         with self.lock:
             m = self.load()
             total = max(1.0, len(samples_16k) / 16000)
-            segs, info = m.transcribe(samples_16k, beam_size=1, best_of=1, vad_filter=False, word_timestamps=False,
-                                      condition_on_previous_text=False, temperature=0.0, no_speech_threshold=0.5)
+            kw = dict(beam_size=1, best_of=1, vad_filter=False, word_timestamps=False,
+                      condition_on_previous_text=False, temperature=0.0, no_speech_threshold=0.5)
+            hw = ' '.join(hotwords or [])[:400]
+            try:
+                segs, info = m.transcribe(samples_16k, hotwords=hw or None, **kw)
+            except TypeError:                     # ältere faster-whisper-Version ohne hotwords
+                segs, info = m.transcribe(samples_16k, initial_prompt=hw or None, **kw)
             out = []
             for s in segs:
                 t = (s.text or '').strip()

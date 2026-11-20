@@ -140,6 +140,19 @@ $hj = Invoke-RestMethod -Method Post -Uri "$base/api/highlight" -Headers $h -Con
 for ($i = 0; $i -lt 120; $i++) { Start-Sleep -Milliseconds 500; $hr = Invoke-RestMethod "$base/api/highlight/$($hj.id)" -Headers $h; if (@('fertig', 'fehler') -contains $hr.state) { break } }
 "Beste Stelle: $($hr.state) $($hr.error) – $(($hr.result.suggestions | ForEach-Object { '{0} {1}-{2}' -f $_.name, $_.start, $_.end }) -join ' | ')" | Tee-Object -FilePath $Out -Append
 if ($hr.state -ne 'fertig' -or $hr.result.suggestions.Count -lt 1) { throw 'Stellensuche fehlgeschlagen' }
+# ---- 1.7.0: Selbst-Lernen ----
+$sg = $hr.result.suggestions | Where-Object { $_.kind -ne 'all' } | Select-Object -First 1
+if ($sg) {
+  for ($k = 0; $k -lt 3; $k++) { Invoke-RestMethod -Method Post -Uri "$base/api/learn/hl" -Headers $h -ContentType 'application/json' -Body (@{ kind = $sg.kind; feat = $sg.feat } | ConvertTo-Json) | Out-Null }
+  $hj = Invoke-RestMethod -Method Post -Uri "$base/api/highlight" -Headers $h -ContentType 'application/json' -Body (@{ audio = $hs; length = 15; lyrics = $false } | ConvertTo-Json)
+  for ($i = 0; $i -lt 120; $i++) { Start-Sleep -Milliseconds 500; $hr = Invoke-RestMethod "$base/api/highlight/$($hj.id)" -Headers $h; if (@('fertig', 'fehler') -contains $hr.state) { break } }
+  $ln = Invoke-RestMethod "$base/api/learn" -Headers $h
+  "Lernen: $($ln.hl.n) Entscheidungen, Favorit $($ln.hl.fav), erster Vorschlag jetzt $($hr.result.suggestions[0].name) (Favorit: $($hr.result.suggestions[0].fav))" | Tee-Object -FilePath $Out -Append
+  if ($ln.hl.n -lt 3 -or $hr.result.suggestions[0].kind -ne $sg.kind) { throw 'Selbst-Lernen (beste Stelle) funktioniert nicht' }
+  Invoke-RestMethod -Method Post -Uri "$base/api/learn/reset" -Headers $h -ContentType 'application/json' -Body '{"part":"all"}' | Out-Null
+}
+$up = Invoke-RestMethod "$base/api/update" -Headers $h
+"Update-Prüfung: aktuell $($up.current), neueste $($up.latest) $($up.error)" | Tee-Object -FilePath $Out -Append
 $ls = Invoke-RestMethod "$base/api/lyrics/status" -Headers $h
 "Songtext: Bibliothek $($ls.lib) $($ls.error)" | Tee-Object -FilePath $Out -Append
 if (-not $ls.lib) { throw 'Songtext-Erkennung (faster-whisper) fehlt im Programm' }

@@ -26,8 +26,9 @@
 <header class="top">
  <div class="brand dragzone">
   <span class="mark dragzone" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg></span>
-  <div class="dragzone"><b class="dragzone">ffmpeg_encode Studio</b><small class="dragzone">MP3 + Bild → fertiges YouTube-Video</small></div>
+  <div class="dragzone"><b class="dragzone">ffmpeg_encode Studio <span class="ai-mark">AI</span></b><small class="dragzone">MP3 + Bild → YouTube · Shorts · KI-Effekte · Beste Stelle</small></div>
  </div>
+ <span class="vbadge dragzone" id="verBadge" hidden></span>
  <div class="dragzone drag-fill"></div>
  <nav class="top-actions" aria-label="Werkzeuge">
   <button type="button" class="btn ghost" id="themeBtn" title="Design wählen"><span class="theme-dot" aria-hidden="true"></span><span class="lbl">Design</span></button>
@@ -38,6 +39,7 @@
     <div class="tpl-list" id="presetChips" role="group" aria-label="Gespeicherte Vorlagen"></div>
    </div>
   </div>
+  <button type="button" class="btn ghost" id="learnBtn" title="Das hat die KI gelernt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 3.5a3 3 0 0 0-3 3 3 3 0 0 0-2 5.2 3 3 0 0 0 2 5.3 3.5 3.5 0 0 0 5.5 2.5V4.5a3 3 0 0 0-2.5-1zM14.5 3.5a3 3 0 0 1 3 3 3 3 0 0 1 2 5.2 3 3 0 0 1-2 5.3 3.5 3.5 0 0 1-5.5 2.5"/></svg><span class="lbl">KI lernt</span></button>
   <button type="button" class="btn ghost" id="queueBtn" title="Warteschlange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="lbl">Warteschlange</span><span class="badge" id="queueBadge" hidden>0</span></button>
   <button type="button" class="btn ghost" id="folderBtn" title="Meine Videos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="lbl">Meine Videos</span></button>
   <button type="button" class="btn ghost quit" id="quitBtn" title="Beenden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg><span class="lbl">Beenden</span></button>
@@ -51,7 +53,10 @@
  </div>
 </header>
 
+<div class="bars">
+<div class="updbar" id="updBar" hidden><span id="updText"></span><button type="button" class="btn small glow" id="updGo">Jetzt herunterladen</button><button type="button" class="btn small ghost" id="updLater">Später</button></div>
 <div class="warnbar" id="ffWarn" hidden>FFmpeg wurde nicht gefunden. Bitte <b>ffmpeg_encode Studio</b> neu installieren – der Installer bringt FFmpeg mit.</div>
+</div>
 
 <main class="layout">
  <!-- LINKS -->
@@ -330,6 +335,26 @@
   <div class="dlg-head"><h2 id="qTitle">Warteschlange</h2><button type="button" class="x" data-close aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="qlist" id="qList"></div>
   <div class="dlg-actions"><button type="button" class="btn" id="qClear">Erledigte entfernen</button><button type="button" class="btn glow" data-close>Schließen</button></div>
+ </div>
+</dialog>
+
+<!-- Das hat die KI gelernt -->
+<dialog id="learnDlg" aria-labelledby="lnTitle">
+ <div class="dlg">
+  <div class="dlg-head"><h2 id="lnTitle">Das hat die KI gelernt</h2><button type="button" class="x" data-close aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <p class="hint">Das Programm lernt aus deinen Entscheidungen und wird mit jedem Video besser für dich – alles bleibt offline auf diesem PC.</p>
+  <div class="ln-list" id="lnList"></div>
+  <div class="dlg-actions"><button type="button" class="btn danger" id="lnResetAll">Alles vergessen</button><button type="button" class="btn glow" data-close>Schließen</button></div>
+ </div>
+</dialog>
+
+<!-- Songtext korrigieren -->
+<dialog id="lyrDlg" aria-labelledby="lyTitle">
+ <div class="dlg wide">
+  <div class="dlg-head"><h2 id="lyTitle">Songtext korrigieren</h2><button type="button" class="x" data-close aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <p class="hint">Verbessere falsch erkannte Wörter. Die KI merkt sich deine Wörter (z. B. Namen) und erkennt sie bei den nächsten Songs besser. Leere Zeilen werden entfernt.</p>
+  <div class="lyr-lines" id="lyrLines"></div>
+  <div class="dlg-actions"><button type="button" class="btn" data-close>Abbrechen</button><button type="button" class="btn glow" id="lyrSave">Speichern &amp; neu suchen</button></div>
  </div>
 </dialog>
 

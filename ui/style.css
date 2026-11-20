@@ -589,7 +589,7 @@ h2.fold-head,.fold-head h2{white-space:nowrap;flex:none}
 /* ---------- 1.5.0: Vorlagen in der Kopfzeile ---------- */
 body{grid-template-rows:auto auto minmax(0,1fr) auto}
 body>header.top{grid-row:1}
-body>.warnbar{grid-row:2}
+body>.warnbar,body>.bars{grid-row:2}
 body>main.layout{grid-row:3}
 body>footer.bottom{grid-row:4}
 .tpl-wrap{position:relative}
@@ -653,3 +653,33 @@ body.full .grips{display:none}
 @media (max-width:1200px){.top-actions .lbl{display:none}.top-actions .btn{padding:0 12px}}
 
 #queueDlg{width:min(640px,calc(100vw - 24px))}
+
+/* ---------- Selbst-Lernen (1.7.0) ---------- */
+.updbar{display:flex;align-items:center;gap:12px;padding:8px 20px;background:color-mix(in srgb,var(--a) 14%,transparent);border-bottom:1px solid color-mix(in srgb,var(--a) 40%,transparent);font-weight:600}
+.updbar[hidden]{display:none}
+.updbar span{flex:1}
+.ln-list{display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow:auto}
+.ln-card{padding:14px 16px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.ln-card h3{margin:0 0 6px;font:800 14px var(--fb);display:flex;align-items:center;gap:8px}
+.ln-card h3 .btn{margin-left:auto}
+.ln-card p{margin:4px 0;color:var(--muted);font-size:12.5px;line-height:1.45}
+.ln-card p b{color:var(--text)}
+.ln-meter{height:6px;border-radius:9px;background:var(--panel2);overflow:hidden;margin:8px 0 2px}
+.ln-meter i{display:block;height:100%;background:linear-gradient(90deg,var(--a),var(--b))}
+.ln-words{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.ln-words span{padding:2px 8px;border-radius:99px;font-size:11.5px;background:var(--panel2);color:var(--text)}
+.ln-acts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.hl-fav{margin-left:6px;padding:1px 7px;border-radius:99px;font-size:10.5px;font-weight:800;color:var(--on);background:linear-gradient(90deg,var(--a),var(--b));vertical-align:1px}
+.hl-learn{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.hl-learn small{color:var(--muted)}
+.lyr-lines{display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto;padding-right:4px}
+.lyr-row{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;align-items:center}
+.lyr-row small{color:var(--muted);font-variant-numeric:tabular-nums}
+.lyr-row input{width:100%;min-height:34px;padding:0 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit}
+.lyr-row input:focus{outline:none;border-color:var(--a)}
+.toast.act{display:flex;align-items:center;gap:10px;pointer-events:auto}
+.toast.act .btn{min-height:30px;padding:0 10px;font-size:12px}
+.vbadge{flex:0 0 auto;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:99px;background:color-mix(in srgb,var(--a) 14%,transparent);color:color-mix(in srgb,var(--a) 75%,var(--text));border:1px solid color-mix(in srgb,var(--a) 35%,transparent);white-space:nowrap;max-width:420px;overflow:hidden;text-overflow:ellipsis;user-select:none}
+.top.c1 .vb-gpu{display:none}
+.top.c2 .vbadge{display:none}
+.top.c3 .top-actions .lbl{display:none}.top.c3 .top-actions .btn{padding:0 12px}

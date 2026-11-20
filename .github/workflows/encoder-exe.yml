@@ -38,7 +38,7 @@ jobs:
           python -c "import sys,types; sys.modules.setdefault('av', types.ModuleType('av')); import faster_whisper, ctranslate2; print('faster-whisper', faster_whisper.__version__, 'ctranslate2', ctranslate2.__version__)" | Tee-Object -FilePath build.log -Append
           python -c "import onnxruntime as o, cv2, numpy; print('onnxruntime', o.__version__, o.get_available_providers(), 'opencv', cv2.__version__)" | Tee-Object -FilePath build.log
           python -m PyInstaller --onedir --noconsole --noconfirm --name ffmpeg_encode_Studio --icon icon.ico `
-            --add-data "ui;ui" --collect-all webview --hidden-import clr --hidden-import mark --hidden-import viz --hidden-import fx --hidden-import highlight --hidden-import lyrics `
+            --add-data "ui;ui" --collect-all webview --hidden-import clr --hidden-import mark --hidden-import viz --hidden-import fx --hidden-import highlight --hidden-import lyrics --hidden-import learn `
             --collect-all ctranslate2 --collect-all faster_whisper --hidden-import tokenizers --exclude-module av `
             --collect-all onnxruntime --collect-submodules cv2 ffmpeg_encode_studio.py 2>&1 | Tee-Object -FilePath build.log -Append
           if (!(Test-Path dist\ffmpeg_encode_Studio\ffmpeg_encode_Studio.exe)) { exit 1 }
