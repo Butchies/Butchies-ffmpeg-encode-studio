@@ -35,6 +35,10 @@ FFmpeg mit allen Codecs ist dabei (inklusive VMAF-Messung und HDR). WebView2 wir
 **Neu in 1.1.3**
 - Das Programm **merkt sich jetzt alles** bis zum nächsten Start: Design, Start-Animation an/aus, Auto/Manuell-Schalter, eigene Einstellungen (Codec, Zielgröße, Zeitplan …) und eigene Vorlagen. Bisher ging das beim Neustart verloren
 
+**Neu in 1.2.3**
+- Beim Umwandeln erscheint ein **großes Fortschritts-Fenster** wie im Encode Studio: große Prozentzahl, Balken 0–100 %, Warteschlange, Format, Verarbeitet, Tempo, Restzeit und Protokoll
+- Knöpfe: Pause, „Im Hintergrund weiter“ (zurückholen mit ⤢ im KI-Monitor) und Abbrechen (Sicherheitsabfrage durch zweiten Klick). Am Ende: „Im Ordner zeigen“ und „Fertig“
+
 **Neu in 1.2.2**
 - **Jahreszeiten** beim Starten und Beenden (Blüten, Sonne, Herbstlaub, Schnee) – jeweils **2 Wochen ab dem Wechsel** (1. März, 1. Juni, 1. September, 1. Dezember), sonst die gewohnte Animation
 - Abschaltbar unter „Design“: „🍂 Jahreszeit beim Starten und Beenden zeigen“

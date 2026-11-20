@@ -333,6 +333,30 @@ tr.mk td{background:color-mix(in srgb,var(--bad) 12%,transparent)}
 .x svg,.dlg svg,.theme-opt svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 /* Dialoge, Designs, Start-Animation, Abschied – aus Butchies Encode Studio */
 dialog{width:min(560px,calc(100vw - 24px));padding:0;border-radius:22px;border:1px solid var(--line);background:linear-gradient(160deg,color-mix(in srgb,var(--a) 12%,var(--bg2)),var(--bg));color:var(--text);box-shadow:0 30px 90px rgba(0,0,0,.6),0 0 50px var(--glow)}
+.pgdlg{width:min(780px,calc(100vw - 24px))}
+.pg{padding:26px;display:flex;flex-direction:column;gap:14px}
+.pg-head{display:flex;align-items:center;gap:14px}
+.pg-ico{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;color:var(--on);background:linear-gradient(135deg,var(--a),var(--b));box-shadow:0 6px 20px var(--glow);flex:none;font-size:20px}
+.pg-ico .spin{width:22px;height:22px;border-radius:50%;border:3px solid color-mix(in srgb,var(--on) 30%,transparent);border-top-color:var(--on);animation:pgspin .8s linear infinite}
+@keyframes pgspin{to{transform:rotate(360deg)}}
+.pg-ico.done{background:var(--ok);color:#052;box-shadow:none}.pg-ico.err{background:var(--bad);color:#fff;box-shadow:none}
+.pg-t{min-width:0;flex:1}.pg-t h2{margin:0;font:700 22px var(--fh)}
+.pg-t code{display:block;font:12.5px var(--fm);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg-big{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.pg-big span{font:800 64px/1 var(--fh);font-variant-numeric:tabular-nums;background:linear-gradient(100deg,var(--text) 20%,var(--b) 60%,var(--a));-webkit-background-clip:text;background-clip:text;color:transparent}
+.pg-big small{font-size:14px;color:var(--muted);text-align:right}
+.pg .segbar i{height:22px}
+.pg-scale{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:-8px}
+.pg-q{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--muted)}.pg-q .qb{flex:1;height:6px;border-radius:99px;background:var(--panel2);overflow:hidden}.pg-q .qb i{display:block;height:100%;background:linear-gradient(90deg,var(--a),var(--b));transition:width .5s}
+.pg-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.pg-stats div{padding:12px;border-radius:13px;background:var(--panel);display:flex;flex-direction:column;gap:2px;min-width:0}
+.pg-stats small{font-size:11.5px;color:var(--muted)}
+.pg-stats b{font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg-par{font-size:12.5px;color:var(--muted);display:grid;gap:3px}.pg-par:empty{display:none}
+.pg .log{height:150px;max-height:none;margin:0}
+.pg-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+@media(max-width:700px){.pg-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 dialog::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(4px)}
 dialog[open]{animation:dlg .3s ease}
 @keyframes dlg{from{opacity:0;transform:scale(.96)}}
@@ -661,7 +685,7 @@ dialog[open]{animation:dlg .3s ease}
       <div id="anaBox"><div class="empty">Wähle eine Datei aus der Liste – die KI berechnet Auflösung, Bitrate, Qualität und gibt Tipps.</div></div>
     </div>
     <div class="card">
-      <h2>👁️ KI-Monitor <span class="sub" id="monFile">bereit</span></h2>
+      <h2>👁️ KI-Monitor <span class="sub" id="monFile">bereit</span><button class="btn sm" id="pgOpen" hidden title="Fortschritt groß anzeigen">⤢</button></h2>
       <div class="mon">
         <div class="kv" style="display:contents">
           <div><small>Fortschritt Datei</small><b id="mPct">0 %</b></div>
@@ -778,6 +802,31 @@ dialog[open]{animation:dlg .3s ease}
  <span class="g-wave" aria-hidden="true"></span>
 </section>
 
+<dialog id="progDlg" class="pgdlg" aria-labelledby="pgTitle">
+ <div class="pg">
+  <div class="pg-head"><div class="pg-ico" id="pgIco"><span class="spin"></span></div>
+   <div class="pg-t"><h2 id="pgTitle">Wird umgewandelt …</h2><code id="pgFile"></code></div></div>
+  <div class="pg-big"><span id="pgPct">0 %</span><small id="pgPhase">Startet …</small></div>
+  <div class="segbar" id="pgBar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="pg-scale"><span>0 %</span><span>25 %</span><span>50 %</span><span>75 %</span><span>100 %</span></div>
+  <div class="pg-q"><span id="pgQt">Warteschlange</span><span class="qb"><i id="pgQb" style="width:0"></i></span><b id="pgQp">0 %</b></div>
+  <div class="pg-stats">
+   <div><small>Format</small><b id="pgFmt">–</b></div>
+   <div><small>Verarbeitet</small><b id="pgTime">–</b></div>
+   <div><small>Tempo</small><b id="pgSpeed">–</b></div>
+   <div><small>Restzeit</small><b id="pgEta">–</b></div>
+  </div>
+  <div class="pg-par" id="pgPar"></div>
+  <div class="log" id="pgLog"></div>
+  <div class="pg-actions">
+   <button type="button" class="btn" id="pgPause">⏸ Pause</button>
+   <button type="button" class="btn" id="pgHide">Im Hintergrund weiter</button>
+   <button type="button" class="btn danger" id="pgCancel">Abbrechen</button>
+   <button type="button" class="btn" id="pgShow" hidden>📂 Im Ordner zeigen</button>
+   <button type="button" class="btn pri" id="pgDone" hidden>Fertig</button>
+  </div>
+ </div>
+</dialog>
 <div class="modal" id="modal"><div class="box"><h3 id="mdT"></h3><div id="mdB" style="margin:10px 0;color:var(--mut);font-size:13px;max-height:260px;overflow:auto"></div>
   <div class="row" id="mdBtns" style="justify-content:flex-end"></div></div></div>
 <div class="toast" id="toast"><span id="tsT"></span><button class="btn sm" id="tsB"></button></div>
@@ -1379,7 +1428,7 @@ $('#iDir').onchange=e=>{addFiles([...e.target.files]);e.target.value=''};
 $('#bClear').onclick=()=>{if(RUN.on)return;Q=[];selId=null;renderQ();update()};
 
 /* ---------- Log + Chart ---------- */
-function log(cls,msg){const d=new Date().toLocaleTimeString('de-DE');const el=document.createElement('div');el.innerHTML=`<span class="t">${d}</span><span class="${cls}">${msg}</span>`;$('#log').appendChild(el);$('#log').scrollTop=1e9}
+function log(cls,msg){const d=new Date().toLocaleTimeString('de-DE');const el=document.createElement('div');el.innerHTML=`<span class="t">${d}</span><span class="${cls}">${msg}</span>`;$('#log').appendChild(el);$('#log').scrollTop=1e9;const pl=$('#pgLog');if(pl){pl.appendChild(el.cloneNode(true));while(pl.children.length>80)pl.firstChild.remove();pl.scrollTop=1e9}}
 const cv=$('#chart'),cx=cv.getContext('2d');
 function cssv(n){return getComputedStyle(document.body).getPropertyValue(n).trim()}
 let lastPts=null,lastTarget=1,lastMax=0;
@@ -1398,12 +1447,45 @@ draw([],1,0);
 
 /* ---------- Simulation ---------- */
 const RUN={on:false,pause:false,timer:null};
+/* ---------- Großes Fortschritts-Fenster (wie im Encode Studio) ---------- */
+let PGX=null,PGT=null;
+function pgShow(){const d=$('#progDlg');$('#pgLog').innerHTML=$('#log').innerHTML;$('#pgLog').scrollTop=1e9;
+  $('#pgIco').className='pg-ico';$('#pgIco').innerHTML='<span class="spin"></span>';$('#pgTitle').textContent='Wird umgewandelt …';
+  ['pgPause','pgHide','pgCancel'].forEach(i=>$('#'+i).hidden=false);['pgShow','pgDone'].forEach(i=>$('#'+i).hidden=true);$('#pgBar').classList.remove('done');
+  if(!d.open){try{d.showModal()}catch(e){d.setAttribute('open','')}}$('#pgOpen').hidden=true;clearInterval(PGT);PGT=setInterval(pgSync,500);pgSync()}
+function pgHide(){const d=$('#progDlg');if(d.open)d.close();$('#pgOpen').hidden=!RUN.on;}
+function pgSeg(p){const n=Math.floor(p/5);$$('#pgBar i').forEach((e,i)=>e.classList.toggle('on',i<n))}
+function pgSync(){if(!$('#progDlg').open)return;
+  const pct=parseFloat($('#mPct').textContent)||0,allP=parseFloat($('#pAllT').textContent)||0;
+  const doneN=Q.filter(q=>q.state==='done').length,tot=Q.filter(q=>['done','run','queued','err','stop'].includes(q.state)||q.state==='wait').length;
+  const r=PGX&&PGX.running,q=r?r.q:Q.find(x=>x.state==='run'),j=r?r.j:null;
+  $('#pgPct').textContent=Math.floor(pct)+' %';pgSeg(pct);
+  $('#pgFile').textContent=q?(q.path||q.name):($('#monFile').textContent||'');
+  const pass=j&&j.pass&&q.a&&q.a.job&&q.a.job.passes.length>1?`Durchgang ${j.pass}/2 · `:'';
+  $('#pgPhase').textContent=RUN.pause?'⏸ Pausiert':q?pass+(q.slot&&REAL?`${wIcon(q.slot)} ${wName(q.slot)}`:'Video wird umgewandelt …'):'Wartet …';
+  $('#pgQt').textContent=`Warteschlange: ${Math.min(doneN+1,Math.max(tot,1))} von ${Math.max(tot,1)}`;$('#pgQb').style.width=allP+'%';$('#pgQp').textContent=Math.floor(allP)+' %';
+  const a=q&&q.a;$('#pgFmt').textContent=a?`${a.outW}×${a.outH} · ${q.fps?Math.round(q.fps*100)/100+' fps':''} · ${S.fam==='h264'?'H.264':'H.265'}`:'–';
+  $('#pgTime').textContent=j&&q.dur?`${fmtT(j.t||0)} / ${fmtT(q.dur)}`:q&&q.dur?`${fmtT(q.dur*pct/100)} / ${fmtT(q.dur)}`:'–';
+  $('#pgSpeed').textContent=$('#mSpd').textContent;$('#pgEta').textContent=$('#mEta').textContent;
+  const runs=PGX&&PGX.runs||[];$('#pgPar').innerHTML=runs.length>1?runs.map(({q,j})=>`<div>${wIcon(q.slot)} <b>${esc(wName(q.slot))}</b> · ${esc(q.name)} · ${Math.floor(j.pct)} %</div>`).join(''):'';
+  $('#pgPause').textContent=RUN.pause?'▶ Weiter':'⏸ Pause'}
+function pgEnd(kind){clearInterval(PGT);PGX=null;$('#pgOpen').hidden=true;const d=$('#progDlg');if(!d.open)return;
+  const done=kind==='done',n=Q.filter(q=>q.state==='done').length;
+  $('#pgIco').className='pg-ico '+(done?'done':'err');$('#pgIco').textContent=done?'✓':'✕';
+  $('#pgTitle').textContent=done?(n===1?'Fertig! Dein Video ist bereit':`Fertig! ${n} Videos sind bereit`):'Abgebrochen';
+  if(done){$('#pgPct').textContent='100 %';pgSeg(100);$('#pgBar').classList.add('done');$('#pgQb').style.width='100%';$('#pgQp').textContent='100 %';$('#pgPhase').textContent='Alles umgewandelt'}else $('#pgPhase').textContent='Umwandlung gestoppt';
+  ['pgPause','pgHide','pgCancel'].forEach(i=>$('#'+i).hidden=true);$('#pgDone').hidden=false;$('#pgShow').hidden=!(REAL&&done&&Q.some(q=>q.out))}
+$('#pgHide').onclick=pgHide;$('#pgOpen').onclick=pgShow;$('#pgDone').onclick=()=>$('#progDlg').close();
+$('#pgPause').onclick=()=>{$('#bPause').click();pgSync()};
+let PGC=null;$('#pgCancel').onclick=()=>{const b=$('#pgCancel');if(!PGC){b.textContent='Wirklich abbrechen?';b.title='Halb fertige Dateien werden gelöscht, die Originale bleiben.';PGC=setTimeout(()=>{PGC=null;b.textContent='Abbrechen'},4000);return}clearTimeout(PGC);PGC=null;b.textContent='Abbrechen';$('#bStop').click()};
+$('#pgShow').onclick=()=>{const q=[...Q].reverse().find(q=>q.out);if(q)api('/api/show',{path:q.out}).catch(()=>{})};
+$('#progDlg').addEventListener('cancel',e=>{e.preventDefault();if(RUN.on)pgHide();else $('#progDlg').close()});
 function setSeg(p){const n=Math.floor(p/5);$$('#pAll i').forEach((e,i)=>e.classList.toggle('on',i<n));$('#pAll').classList.toggle('done',p>=100);$('#pAllT').textContent=Math.floor(p)+' %'}
 function rng(seed){return()=>{seed=(seed*1664525+1013904223)%4294967296;return seed/4294967296}}
 function startQueue(){
   if(REAL)return realStart();
   const todo=Q.filter(q=>q.state!=='done'&&!(q.bad&&!q.force)); if(!todo.length){log('ok','Alles schon fertig.');return}
-  RUN.on=true;RUN.pause=false;$('#bStart').disabled=true;$('#bPause').disabled=false;$('#bStop').disabled=false;anaFold(true);
+  RUN.on=true;RUN.pause=false;$('#bStart').disabled=true;$('#bPause').disabled=false;$('#bStop').disabled=false;anaFold(true);pgShow();
   const so=settings().out;if(so.start!=='now')log('ai',`Zeitplan: Start um ${so.start==='22'?'22:00':so.start==='1'?'01:00':'03:00'} Uhr geplant – in der Vorschau startet es zum Testen sofort.`);
   log('ai',`KI: Starte ${todo.length} Datei(en) mit ${$('#sEnc').selectedOptions[0].text} → ${esc(so.dir)}`);
   runNext();
@@ -1453,14 +1535,14 @@ function runNext(){
       renderQ(); setTimeout(runNext,500)}
   },250);
 }
-function finishAll(){RUN.on=false;$('#bPause').disabled=true;$('#bStop').disabled=true;$('#bStart').disabled=false;$('#monFile').textContent='fertig';setSeg(100);log('ai','KI: Warteschlange abgeschlossen.');renderQ();
+function finishAll(){RUN.on=false;pgEnd('done');$('#bPause').disabled=true;$('#bStop').disabled=true;$('#bStart').disabled=false;$('#monFile').textContent='fertig';setSeg(100);log('ai','KI: Warteschlange abgeschlossen.');renderQ();
   const so=settings().out,n=Q.filter(x=>x.state==='done').length;
   if(REAL)return realAfterAll();
   if(so.push){log('ok',`📱 Nachricht ans Handy: „${n} Video(s) fertig umgewandelt“`);toast(`📱 Handy-Nachricht: ${n} Video(s) fertig.`)}
   if(so.after!=='none')log('ai',`Im Programm ${so.after==='off'?'fährt der PC jetzt herunter':'geht der PC jetzt in den Ruhezustand'} (60 s Countdown, abbrechbar).`)}
 $('#bStart').onclick=startQueue;
 $('#bPause').onclick=()=>{RUN.pause=!RUN.pause;if(REAL)api('/api/pause',{on:RUN.pause}).catch(()=>{});$('#bPause').textContent=RUN.pause?'▶ Weiter':'⏸ Pause';log('',RUN.pause?'Pausiert.':'Fortgesetzt.')};
-$('#bStop').onclick=()=>{clearInterval(RUN.timer);if(REAL){if(WAIT){clearInterval(WAIT);WAIT=null}api('/api/cancel',{}).catch(()=>{});Q.forEach(q=>{if(q.state==='queued')q.state='stop'})}Q.forEach(q=>{if(q.state==='run'){q.state='stop';q.prog=0}});RUN.on=false;RUN.pause=false;$('#bPause').textContent='⏸ Pause';$('#bPause').disabled=true;$('#bStop').disabled=true;log('bad','Abgebrochen.');renderQ()};
+$('#bStop').onclick=()=>{clearInterval(RUN.timer);pgEnd('stop');if(REAL){if(WAIT){clearInterval(WAIT);WAIT=null}api('/api/cancel',{}).catch(()=>{});Q.forEach(q=>{if(q.state==='queued')q.state='stop'})}Q.forEach(q=>{if(q.state==='run'){q.state='stop';q.prog=0}});RUN.on=false;RUN.pause=false;$('#bPause').textContent='⏸ Pause';$('#bPause').disabled=true;$('#bStop').disabled=true;log('bad','Abgebrochen.');renderQ()};
 
 /* ================= VERZEICHNIS-ABGLEICH ================= */
 const DIR={A:[],B:[]};
@@ -2032,7 +2114,7 @@ async function realStart(){
   const todo=Q.filter(q=>!['done','run','queued'].includes(q.state)&&!(q.bad&&!q.force));if(!todo.length){log('ok','Alles schon fertig.');return}
   const s=settings();
   await askSwap(todo);
-  RUN.on=true;RUN.pause=false;$('#bStart').disabled=true;$('#bPause').disabled=true;$('#bStop').disabled=false;anaFold(true);
+  RUN.on=true;RUN.pause=false;$('#bStart').disabled=true;$('#bPause').disabled=true;$('#bStop').disabled=false;anaFold(true);pgShow();
   if(s.out.start!=='now'){
     const h=+s.out.start,at=new Date();at.setHours(h,0,0,0);if(at<=new Date())at.setDate(at.getDate()+1);
     log('ai',`Zeitplan: Start um ${String(h).padStart(2,'0')}:00 Uhr – das Programm muss dafür geöffnet bleiben.`);
@@ -2067,6 +2149,7 @@ async function realStart(){
     const mine=Q.filter(q=>q.jid&&byId[q.jid]);
     const all=mine.length?mine.reduce((s,q)=>s+q.prog,0)/mine.length*100:0;setSeg(all);
     $('#monRun').innerHTML=runs.length>1?runs.map(({q,j})=>`<div>${wIcon(q.slot)} <b>${esc(wName(q.slot))}</b> · ${esc(q.name)} · ${Math.floor(j.pct)} % · ${Math.round(j.fps)} fps</div>`).join(''):'';
+    PGX={running,runs,all};
     if(running){const {q,j}=running,a=q.a;$('#monFile').textContent=q.name+(j.pass&&q.a.job.passes.length>1?` · Durchgang ${j.pass}/2`:'');
       $('#mPct').textContent=Math.floor(j.pct)+' %';$('#mSpd').textContent=`${Math.round(j.fps)} fps · ${String(j.speed.toFixed(2)).replace('.',',')}×`;
       $('#mBr').textContent=j.kbps?Math.round(j.kbps).toLocaleString('de-DE')+' kbit/s':'–';$('#mEta').textContent=j.eta!=null?fmtT(j.eta):'–';
