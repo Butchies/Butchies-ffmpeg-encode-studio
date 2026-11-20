@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 APP_NAME = 'Butchies Video Converter'
-VERSION = '1.1.0'
+VERSION = '1.1.1'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 UI = BASE / 'ui'
@@ -729,23 +729,64 @@ def start_task(fn, *args):
 
 
 # ---------- Ordner-Abgleich ----------
-def scan(folder, limit=100000):
+def scan(folder, limit=100000, T=None):
+    """Ordner rekursiv einlesen. os.scandir liefert unter Windows die Größe gleich mit (schnell, auch übers Netzwerk/NAS).
+    Fortschritt: jeder Unterordner bekommt einen gleichen Anteil vom Anteil seines Elternordners."""
     root = Path(folder)
     if not root.is_dir():
         raise ValueError('Ordner nicht gefunden')
-    out = []
-    for r, dirs, files in os.walk(root):
-        dirs[:] = sorted(d for d in dirs if d.lower() not in SKIP_DIRS)
-        for f in sorted(files):
-            p = Path(r) / f
+    out, done = [], [0.0]
+
+    def walk(d, w):
+        if len(out) >= limit:
+            return
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            done[0] += w
+            return
+        subs = []
+        for e in entries:
             try:
-                size = p.stat().st_size
-            except OSError:
-                continue
-            out.append({'name': f, 'full': str(p), 'path': (root.name + '/' + str(p.relative_to(root)).replace('\\', '/')), 'size': size})
-            if len(out) >= limit:
-                return out
+                if e.is_dir(follow_symlinks=False):
+                    if e.name.lower() not in SKIP_DIRS:
+                        subs.append(e.path)
+                elif e.is_file(follow_symlinks=False):
+                    p = Path(e.path)
+                    out.append({'name': e.name, 'full': e.path, 'size': e.stat().st_size,
+                                'path': root.name + '/' + str(p.relative_to(root)).replace('\\', '/')})
+            except (OSError, ValueError):
+                pass
+        share = w / (len(subs) + 1)
+        done[0] += share
+        if T is not None:
+            T['pct'] = min(99, int(done[0] * 100))
+            T['phase'] = '%s Dateien gefunden · %s' % (format(len(out), ',').replace(',', '.'), Path(d).name or str(d))
+        for sub in sorted(subs, key=str.lower):
+            walk(sub, share)
+    walk(root, 1.0)
+    out.sort(key=lambda f: f['path'].lower())
     return out
+
+
+def task_scan(tid, folder):
+    T = TASKS[tid]
+    files = scan(folder, T=T)
+    T['result'] = {'root': str(Path(folder)), 'files': files}
+    T['pct'], T['state'] = 100, 'fertig'
+
+
+def task_hash(tid, paths):
+    T = TASKS[tid]
+    res = {}
+    for i, p in enumerate(paths):
+        T['pct'], T['phase'] = round(i / max(1, len(paths)) * 100), Path(p).name
+        try:
+            res[p] = quick_hash(p)
+        except OSError:
+            res[p] = None
+    T['result'] = res
+    T['pct'], T['state'] = 100, 'fertig'
 
 
 def quick_hash(path):
@@ -1103,7 +1144,11 @@ class Handler(BaseHTTPRequestHandler):
                 e = fpath(d.get('id', ''))
                 return self.send_json(200, {'task': start_task(task_abshot, e, list(d.get('vargs') or []), fnum(d.get('frac'), .5))})
             if path == '/api/scan':
-                return self.send_json(200, {'root': str(Path(d.get('path', ''))), 'files': scan(d.get('path', ''))})
+                if not Path(d.get('path', '')).is_dir():
+                    raise ValueError('Ordner nicht gefunden')
+                return self.send_json(200, {'task': start_task(task_scan, d.get('path', ''))})
+            if path == '/api/hashtask':
+                return self.send_json(200, {'task': start_task(task_hash, [p for p in d.get('paths', [])][:2000])})
             if path == '/api/hash':
                 out = {}
                 for p in d.get('paths', [])[:2000]:
