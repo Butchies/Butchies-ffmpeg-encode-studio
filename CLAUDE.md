@@ -22,3 +22,10 @@ Windows-Programm: Song + Bild → YouTube-Video (4K/1440p/1080p, Shorts 9:16, Sh
 - Neue Version: `VERSION` in `ffmpeg_encode_studio.py` erhöhen (gleiche Version = Datei im Release wird ersetzt).
 - Lokal testen: `python3 ffmpeg_encode_studio.py --no-window` + Playwright (`/usr/bin/google-chrome`).
 - Nutzerwunsch: bei Releases Fortschritt in Prozent (ca. alle 5 %) angeben.
+
+## Butchies Video Converter AI (eigenes Programm im Ordner `video-converter/`)
+- Nutzerwunsch: eigenständiges Programm, nur im selben Repo abgelegt – NICHT mit dem Encode Studio zusammenlegen. Gleicher Look (7 Designs, Schriften, Start/Abschied).
+- `video-converter/butchies_video_converter.py`: stdlib-Server + pywebview (Fenster-Code `WinFrame` wie Encode Studio). ffprobe-Prüfung (`probe`, `tail_check` = Defekt-Check), Jobs mit `-progress` (Platzhalter `{IN}` `{OUT}` `{NULL}` `{PASSLOG}`, cwd = Job-Ordner wegen x265 `stats=`), Player `/api/stream` (Live-Umwandlung fragmented MP4) bzw. `/api/file`, Standbild `/api/frame`, VMAF-Probe `task_vmaf` (libvmaf, sonst SSIM), Vorher/Nachher `task_abshot`, Abgleich `/api/scan|hash|fp|delete|restore|rename`, TMDB optional, ntfy, `power`. Drop: pywebview DOMEventHandler -> `window.nativeDrop(paths)` + `window.dropZone`.
+- `--selftest` (im Workflow) testet alles mit echtem Video. Lokal: `python3 butchies_video_converter.py --no-window` + Playwright, `window.nativeDrop([...])` zum Hinzufügen.
+- UI `video-converter/ui/index.html` (eine Datei): gleicher Code wie die Vorschau-Seite, `REAL`-Modus (Token im Hash) ruft die API; Demo-Knöpfe `.demo-only`. `buildCmd` liefert `{text, passes, vargs, outname}`.
+- Installer `video-converter/installer.iss`: sucht Laufwerk mit meistem freien Speicher (Programm + Video-Ordner), schreibt `{app}\install.json` (outdir). Workflow `converter-exe.yml` -> Release `converter-v<VERSION>`; `encoder-exe.yml` ignoriert `video-converter/**`.

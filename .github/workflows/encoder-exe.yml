@@ -5,6 +5,9 @@ name: ffmpeg_encode Studio – Windows-Installer
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'video-converter/**'
+      - '.github/workflows/converter-exe.yml'
   workflow_dispatch:
 
 permissions:
