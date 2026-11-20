@@ -65,6 +65,9 @@ button{cursor:pointer}
 .arow.man .adrawer{grid-template-rows:1fr}
 .adin{overflow:hidden;min-height:0}
 .arow.man .adin{padding:4px 12px 14px;border-top:1px dashed var(--line);animation:pop .3s ease}
+.arow.man.shut .adrawer{grid-template-rows:0fr}.arow.man.shut .adin{padding:0 12px;border-top:0;animation:none}
+.arow.man .ahead{cursor:pointer}
+.arow.man .atx small::after{content:" ▾";color:var(--a)}.arow.man.shut .atx small::after{content:" ▸"}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .pchip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 11px;border-radius:99px;border:1px solid var(--line);background:var(--inset);font-size:12px;font-weight:700}
 .pchip:hover{border-color:var(--a)}
@@ -815,6 +818,10 @@ const AUTO_DEF={par:true,codec:true,quality:true,res:true,content:true,hdr:true,
 let AUTO=Object.assign({},AUTO_DEF);
 try{const sv=JSON.parse(KV.get('bvc-auto')||'null');if(sv)Object.assign(AUTO,sv)}catch(e){}
 const saveAuto=()=>KV.set('bvc-auto',JSON.stringify(AUTO));
+/* eingeklappte Manuell-Leisten merken (auch nach Neustart) */
+let SHUT={};try{SHUT=JSON.parse(KV.get('bvc-shut')||'{}')||{}}catch(e){}
+const saveShut=()=>KV.set('bvc-shut',JSON.stringify(SHUT));
+function rowShut(k,v){SHUT[k]=!!v;saveShut();$$(`.arow[data-sec="${k}"]`).forEach(r=>r.classList.toggle('shut',!!v))}
 function setFam(f){if(S.fam!==f){S.fam=f;$$('#sFam button').forEach(x=>x.classList.toggle('on',x.dataset.v===f));refreshEnc()}}
 function setEnc(v){if($('#sEnc').value!==v&&[...$('#sEnc').options].some(o=>o.value===v)){$('#sEnc').value=v;refreshPre()}}
 function setSel(id,v){const e=$(id);if(e&&e.value!=v&&[...e.options].some(o=>o.value==v))e.value=v}
@@ -828,13 +835,16 @@ function applyAuto(){
   if(AUTO.content)setSel('#sTune','–');
   if(AUTO.tracks){setSel('#sAud','aac');setSel('#sAbr','160')}
   if(AUTO.out){$('#oDir').value=REAL&&INFO?INFO.outdir:'Videos\\Butchies Converter';setSel('#oName','db');setSel('#oStart','now');setSel('#oAfter','none')}
-  $$('.arow').forEach(r=>{const k=r.dataset.sec;r.classList.toggle('man',!AUTO[k]);r.querySelectorAll('.am button').forEach(b=>b.classList.toggle('on',(b.dataset.a==='auto')===!!AUTO[k]))});
+  $$('.arow').forEach(r=>{const k=r.dataset.sec;r.classList.toggle('man',!AUTO[k]);r.classList.toggle('shut',!!SHUT[k]);r.querySelectorAll('.am button').forEach(b=>b.classList.toggle('on',(b.dataset.a==='auto')===!!AUTO[k]))});
 }
 function bindRows(){
-  $$('.arow .am button').forEach(b=>b.onclick=e=>{e.stopPropagation();const r=b.closest('.arow'),k=r.dataset.sec;AUTO[k]=b.dataset.a==='auto';saveAuto();$$('.pchip').forEach(c=>c.classList.remove('on'));
+  $$('.arow .am button').forEach(b=>b.onclick=e=>{e.stopPropagation();const r=b.closest('.arow'),k=r.dataset.sec,man=b.dataset.a!=='auto';
+    if(man&&!AUTO[k]){rowShut(k,!SHUT[k]);return}   // nochmal „Manuell“ = ein-/ausklappen
+    if(man)SHUT[k]=false,saveShut();
+    AUTO[k]=!man;saveAuto();$$('.pchip').forEach(c=>c.classList.remove('on'));
     applyAuto();if(k==='cmp'){autoCmp()}else update();
     if(k==='hdr'&&!AUTO.hdr){const q=selQ();if(q&&det(q).hdr)askHdr(q,true)}});
-  $$('.arow .ahead').forEach(h=>h.onclick=e=>{if(e.target.closest('.am'))return;const r=h.closest('.arow'),k=r.dataset.sec;if(AUTO[k]){toast('Steht auf Auto – die KI entscheidet. Für eigene Einstellungen auf „Manuell“ tippen.')}});
+  $$('.arow .ahead').forEach(h=>h.onclick=e=>{if(e.target.closest('.am'))return;const r=h.closest('.arow'),k=r.dataset.sec;if(AUTO[k]){toast('Steht auf Auto – die KI entscheidet. Für eigene Einstellungen auf „Manuell“ tippen.')}else rowShut(k,!SHUT[k])});
 }
 $('#allAuto').onclick=()=>{Object.assign(AUTO,AUTO_DEF);saveAuto();$$('.pchip').forEach(c=>c.classList.remove('on'));applyAuto();update();autoCmp();toast('Alles wieder auf Auto – die KI entscheidet.')};
 const selQ=()=>Q.find(x=>x.id===selId);

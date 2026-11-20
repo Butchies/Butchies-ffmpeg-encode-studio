@@ -35,6 +35,10 @@ FFmpeg mit allen Codecs ist dabei (inklusive VMAF-Messung und HDR). WebView2 wir
 **Neu in 1.1.3**
 - Das Programm **merkt sich jetzt alles** bis zum nächsten Start: Design, Start-Animation an/aus, Auto/Manuell-Schalter, eigene Einstellungen (Codec, Zielgröße, Zeitplan …) und eigene Vorlagen. Bisher ging das beim Neustart verloren
 
+**Neu in 1.1.7**
+- Steht eine Leiste auf „Manuell“, klappt sie mit **nochmal „Manuell“ antippen** (oder Klick auf die Überschrift) zu und wieder auf – wie alles andere
+- Das Programm merkt sich, welche Leisten auf Manuell stehen, welche zu- oder aufgeklappt sind und alle gewählten Werte – auch nach dem Neustart
+
 **Neu in 1.1.6**
 - Beim Klick auf „Umwandlung starten“ klappt die **KI-Analyse automatisch zu** (nur eine kurze Zeile mit Note, Auflösung und Größe bleibt). So ist der **KI-Monitor rechts komplett zu sehen, ohne Scrollen**
 - Wieder aufklappen: einfach auf „KI-Analyse“ klicken oder (wenn nichts läuft) eine Datei in der Liste anklicken
