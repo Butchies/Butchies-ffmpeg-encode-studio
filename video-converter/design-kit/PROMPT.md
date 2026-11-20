@@ -1,19 +1,20 @@
 # Auftrag: Jahreszeiten- & Feiertags-Szenen für Start- und Beenden-Animation
 
-Du bist ein erfahrener Motion-/UI-Designer und Frontend-Entwickler. Gestalte für mein Windows-Programm
-**„Butchies Video Converter AI“** jahreszeitliche und feiertägliche Szenen für die **Start-Animation** (Splash)
-und die **Beenden-Animation** (Abschied). Ziel: hochwertig, stimmungsvoll, ruhig-elegant – nicht kitschig.
+Du bist ein erfahrener Motion-/UI-Designer und Frontend-Entwickler. **Entwirf und programmiere selbst, frei und kreativ,**
+eigene jahreszeitliche und feiertägliche Animationen für die **Start-Animation** (Splash) und die **Beenden-Animation**
+(Abschied) meines Windows-Programms **„Butchies Video Converter AI“**. Es gibt keine Vorlage für die Szenen – Ideen,
+Bildsprache, Bewegung und Effekte kommen komplett von dir. Ziel: hochwertig, stimmungsvoll, überraschend – nicht kitschig.
 
 ## Dateien in diesem Paket
 - `original-start-beenden.html` – die **aktuelle** Start- und Beenden-Animation des Programms (genau so im Programm).
   Unten links: Knöpfe zum Abspielen und Wechseln der 7 Designs.
-- `vorschau-feiertage.html` – mein **erster Entwurf** der Szenen (Funktion stimmt, Optik soll besser werden).
 - `fonts/` – die Schriften des Programms (woff2, offline).
 
 ## Was ich möchte
-1. Je Szene eine eigene, schöne Hintergrund-Animation + passendes Symbol in der Mitte (statt der Equalizer-Balken
-   im Logo-Ring) + passende Texte. Der bestehende Aufbau (Logo-Ringe, Titel mit Glanz, Untertitel, Lichtkugeln)
-   soll erkennbar bleiben – die Szene ergänzt ihn.
+1. Für jede Szene eine **eigene, von dir erfundene Animation** samt passender Texte. Wie die Szene aussieht und sich
+   bewegt, entscheidest du. Einzige Bedingung: Sie soll zum Stil von `original-start-beenden.html` passen
+   (Schriften, Farben der 7 Designs, edle Anmutung), damit man das Programm wiedererkennt. Du darfst den Aufbau
+   (Logo-Ringe, Titel, Untertitel) dafür auch umgestalten.
 2. Szenen (automatisch nach Datum, Feiertage haben Vorrang vor Jahreszeiten):
    - Jahreszeiten: Frühling (März–Mai), Sommer (Juni–Aug.), Herbst (Sep.–Nov.), Winter (Dez.–Feb.)
    - Silvester/Neujahr (31.12.–1.1.), Fasching (Weiberfastnacht bis Aschermittwoch = Ostern −52 bis −46 Tage),
@@ -45,3 +46,5 @@ Liefere **drei Dateien** als Code-Blöcke:
      gibt ein Objekt mit `stop()` zurück
 3. `demo.html` – bindet beide Dateien ein und zeigt alle Szenen zum Durchschalten (Start/Beenden, 7 Designs),
    aufgebaut wie `original-start-beenden.html`.
+
+Erkläre zum Schluss in 2–3 Sätzen pro Szene deine Idee.
