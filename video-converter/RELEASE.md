@@ -35,6 +35,10 @@ FFmpeg mit allen Codecs ist dabei (inklusive VMAF-Messung und HDR). WebView2 wir
 **Neu in 1.1.3**
 - Das Programm **merkt sich jetzt alles** bis zum nächsten Start: Design, Start-Animation an/aus, Auto/Manuell-Schalter, eigene Einstellungen (Codec, Zielgröße, Zeitplan …) und eigene Vorlagen. Bisher ging das beim Neustart verloren
 
+**Neu in 1.1.6**
+- Beim Klick auf „Umwandlung starten“ klappt die **KI-Analyse automatisch zu** (nur eine kurze Zeile mit Note, Auflösung und Größe bleibt). So ist der **KI-Monitor rechts komplett zu sehen, ohne Scrollen**
+- Wieder aufklappen: einfach auf „KI-Analyse“ klicken oder (wenn nichts läuft) eine Datei in der Liste anklicken
+
 **Neu in 1.1.5**
 - Das Programm merkt sich beim Beenden **alles**: Design, Einstellungen, die Dateiliste (inkl. schon fertiger Dateien) und die Abgleich-Ordner A/B samt Schutz-Häkchen. Beim nächsten Start ist alles wieder da, der Abgleich läuft automatisch neu
 - Dateien, die es inzwischen nicht mehr gibt, werden beim Start einfach weggelassen

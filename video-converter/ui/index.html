@@ -157,6 +157,12 @@ body:not(.real) .real-only{display:none!important}
 .grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:18px}
 .card{padding:16px 18px;border-radius:var(--r);background:var(--panel);border:1px solid var(--line)}
 .card h2{font:700 16px/1.2 var(--fh);letter-spacing:-.01em;margin-bottom:12px;display:flex;align-items:center;gap:9px}
+#anaHead{cursor:pointer;user-select:none}
+#anaHead .chev{color:var(--muted);font-size:14px;transition:transform .2s}
+#anaCard.shut #anaHead{margin-bottom:6px}#anaCard.shut #anaHead .chev{transform:rotate(-90deg)}
+#anaCard.shut #anaBox{display:none}
+.anaMini{display:none;font:600 13px var(--fb);color:var(--muted)}.anaMini b{font-family:var(--fh)}
+#anaCard.shut .anaMini{display:block}
 .card h2 .sub{font:500 12px var(--fb);color:var(--muted);margin-left:auto;text-align:right;letter-spacing:0}
 .drop{display:grid;place-items:center;gap:4px;padding:22px 16px;text-align:center;border-radius:20px;border:2px dashed color-mix(in srgb,var(--a) 55%,transparent);background:linear-gradient(135deg,color-mix(in srgb,var(--a) 10%,transparent),transparent);transition:.2s}
 .drop.hot,.drop:hover{border-color:var(--b);background:linear-gradient(135deg,color-mix(in srgb,var(--a) 20%,transparent),color-mix(in srgb,var(--b) 8%,transparent))}
@@ -609,8 +615,9 @@ dialog[open]{animation:dlg .3s ease}
   </div>
 
   <div class="col right">
-    <div class="card">
-      <h2>🧠 KI-Analyse <span class="sub" id="anaName">– keine Datei gewählt –</span></h2>
+    <div class="card" id="anaCard">
+      <h2 id="anaHead" title="Ein-/ausklappen">🧠 KI-Analyse <span class="sub" id="anaName">– keine Datei gewählt –</span><span class="chev">▾</span></h2>
+      <div class="anaMini" id="anaMini"></div>
       <div id="anaBox"><div class="empty">Wähle eine Datei aus der Liste – die KI berechnet Auflösung, Bitrate, Qualität und gibt Tipps.</div></div>
     </div>
     <div class="card">
@@ -1221,7 +1228,7 @@ function renderQ(){
       <div class="meta">${q.w?q.w+'×'+q.h:'? × ?'} · ${q.dur?fmtT(q.dur):'?'} · ${fmtMB(q.size/1048576)} → ${a.outW}×${a.outH}, ~${fmtMB(a.est)}</div>
       <div class="meta" style="text-align:right">${st}</div>
       <div class="bar"><i style="width:${q.prog*100}%"></i></div></div>`}).join('');
-  $$('#queue .qi').forEach(el=>el.onclick=()=>{selId=+el.dataset.id;renderQ();update()});
+  $$('#queue .qi').forEach(el=>el.onclick=()=>{selId=+el.dataset.id;if(!RUN.on)anaFold(false);renderQ();update()});
   $$('[data-show]').forEach(b=>b.onclick=e=>{e.stopPropagation();const q=Q.find(x=>x.id==b.dataset.show);if(q&&q.out)api('/api/show',{path:q.out}).catch(()=>{})});
   $$('[data-play]').forEach(b=>b.onclick=e=>{e.stopPropagation();openInPlayer(Q.find(x=>x.id==b.dataset.play));showTab('play')});
 }
@@ -1232,9 +1239,10 @@ function update(){
   $('#crfHint').textContent=e<=18?'(nahezu verlustfrei)':e<=23?'(sehr gut)':e<=27?'(gut, kleiner)':'(sichtbare Verluste)';
   renderQ();
   const q=Q.find(x=>x.id===selId);
-  if(!q){updSums();$('#anaName').textContent='– keine Datei gewählt –';$('#anaBox').innerHTML='<div class="empty">Wähle eine Datei aus der Liste – die KI berechnet Auflösung, Bitrate, Qualität und gibt Tipps.</div>';return}
+  if(!q){updSums();$('#anaMini').textContent='';$('#anaName').textContent='– keine Datei gewählt –';$('#anaBox').innerHTML='<div class="empty">Wähle eine Datei aus der Liste – die KI berechnet Auflösung, Bitrate, Qualität und gibt Tipps.</div>';return}
   const a=q.a,[lb,c]=label(a.score),C=2*Math.PI*62;
   $('#anaName').textContent=q.name;
+  $('#anaMini').innerHTML=`<b style="color:${c}">${a.score}</b> ${lb} · ${a.outW}×${a.outH} · ${fmtMB(q.size/1048576)} → ${fmtMB(a.est)} · <span style="color:var(--a)">aufklappen ▾</span>`;
   $('#anaBox').innerHTML=`<div class="ana">
    <div class="gauge"><svg width="150" height="150"><circle cx="75" cy="75" r="62" stroke="var(--panel2)" style="stroke:var(--panel2)" stroke-width="12" fill="none"/>
     <circle cx="75" cy="75" r="62" stroke="${c}" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-a.score/100)}" style="transition:stroke-dashoffset .4s"/></svg>
@@ -1310,7 +1318,7 @@ function rng(seed){return()=>{seed=(seed*1664525+1013904223)%4294967296;return s
 function startQueue(){
   if(REAL)return realStart();
   const todo=Q.filter(q=>q.state!=='done'&&!(q.bad&&!q.force)); if(!todo.length){log('ok','Alles schon fertig.');return}
-  RUN.on=true;RUN.pause=false;$('#bStart').disabled=true;$('#bPause').disabled=false;$('#bStop').disabled=false;
+  RUN.on=true;RUN.pause=false;$('#bStart').disabled=true;$('#bPause').disabled=false;$('#bStop').disabled=false;anaFold(true);
   const so=settings().out;if(so.start!=='now')log('ai',`Zeitplan: Start um ${so.start==='22'?'22:00':so.start==='1'?'01:00':'03:00'} Uhr geplant – in der Vorschau startet es zum Testen sofort.`);
   log('ai',`KI: Starte ${todo.length} Datei(en) mit ${$('#sEnc').selectedOptions[0].text} → ${esc(so.dir)}`);
   runNext();
@@ -1859,11 +1867,17 @@ window.nativeDrop=async paths=>{
 };
 /* ---------- Umwandeln ---------- */
 let POLL=null,WAIT=null;
+/* KI-Analyse einklappen, damit der Monitor beim Umwandeln ganz zu sehen ist */
+function anaFold(shut){
+  const c=$('#anaCard');if(!c)return;c.classList.toggle('shut',shut);
+  if(shut){const col=c.closest('.col');if(col)col.scrollTo({top:0,behavior:'smooth'})}
+}
+$('#anaHead').onclick=()=>anaFold(!$('#anaCard').classList.contains('shut'));
 async function realStart(){
   const todo=Q.filter(q=>!['done','run','queued'].includes(q.state)&&!(q.bad&&!q.force));if(!todo.length){log('ok','Alles schon fertig.');return}
   const s=settings();
   await askSwap(todo);
-  RUN.on=true;RUN.pause=false;$('#bStart').disabled=true;$('#bPause').disabled=true;$('#bStop').disabled=false;
+  RUN.on=true;RUN.pause=false;$('#bStart').disabled=true;$('#bPause').disabled=true;$('#bStop').disabled=false;anaFold(true);
   if(s.out.start!=='now'){
     const h=+s.out.start,at=new Date();at.setHours(h,0,0,0);if(at<=new Date())at.setDate(at.getDate()+1);
     log('ai',`Zeitplan: Start um ${String(h).padStart(2,'0')}:00 Uhr – das Programm muss dafür geöffnet bleiben.`);
