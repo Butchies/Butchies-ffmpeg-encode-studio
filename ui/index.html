@@ -30,24 +30,24 @@
  </div>
  <div class="dragzone drag-fill"></div>
  <nav class="top-actions" aria-label="Werkzeuge">
-  <button type="button" class="btn ghost" id="themeBtn"><span class="theme-dot" aria-hidden="true"></span><span class="lbl">Design</span></button>
+  <button type="button" class="btn ghost" id="themeBtn" title="Design wählen"><span class="theme-dot" aria-hidden="true"></span><span class="lbl">Design</span></button>
   <div class="tpl-wrap">
-   <button type="button" class="btn ghost" id="tplBtn" aria-haspopup="true" aria-expanded="false" aria-controls="tplMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg><span class="lbl">Vorlagen</span></button>
+   <button type="button" class="btn ghost" id="tplBtn" title="Vorlagen" aria-haspopup="true" aria-expanded="false" aria-controls="tplMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg><span class="lbl">Vorlagen</span></button>
    <div class="tpl-menu" id="tplMenu" hidden>
     <div class="tpl-acts"><button type="button" class="btn glow small" id="saveBtn">Speichern …</button><button type="button" class="btn small" id="loadBtn">Laden …</button></div>
     <div class="tpl-list" id="presetChips" role="group" aria-label="Gespeicherte Vorlagen"></div>
    </div>
   </div>
-  <button type="button" class="btn ghost" id="queueBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="lbl">Warteschlange</span><span class="badge" id="queueBadge" hidden>0</span></button>
-  <button type="button" class="btn ghost" id="folderBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="lbl">Meine Videos</span></button>
-  <button type="button" class="btn ghost quit" id="quitBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg><span class="lbl">Beenden</span></button>
+  <button type="button" class="btn ghost" id="queueBtn" title="Warteschlange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="lbl">Warteschlange</span><span class="badge" id="queueBadge" hidden>0</span></button>
+  <button type="button" class="btn ghost" id="folderBtn" title="Meine Videos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="lbl">Meine Videos</span></button>
+  <button type="button" class="btn ghost quit" id="quitBtn" title="Beenden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg><span class="lbl">Beenden</span></button>
  </nav>
  <div class="winctl" aria-label="Fenster">
-  <button type="button" id="winMin" aria-label="Minimieren"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+  <button type="button" id="winMin" aria-label="Minimieren" title="Minimieren"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
   <button type="button" id="winMon" class="mon" aria-label="Auf anderen Monitor" title="Auf den anderen Monitor (Win + Umschalt + Pfeil)" hidden><svg viewBox="0 0 24 24"><rect x="2" y="5" width="9" height="7" rx="1"/><rect x="13" y="12" width="9" height="7" rx="1"/><path d="M11 9h3l-1.5-1.5M13 15h-3l1.5 1.5"/></svg></button>
   <button type="button" id="winFull" aria-label="Vollbild" title="Vollbild (F11)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
   <button type="button" id="winMax" aria-label="Maximieren" title="Maximieren · F11 = Vollbild"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1.5"/></svg></button>
-  <button type="button" id="winClose" class="x" aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  <button type="button" id="winClose" class="x" aria-label="Schließen" title="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
  </div>
 </header>
 
