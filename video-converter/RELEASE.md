@@ -1,4 +1,4 @@
-**Butchies Video Converter AI 1.1.2**: Videos mit KI-Hilfe in H.264 / H.265 umwandeln. Dazu gibt es einen Player für alle Codecs, einen Vorher/Nachher-Vergleich und einen Ordner-Abgleich.
+**Butchies Video Converter AI 1.1.3**: Videos mit KI-Hilfe in H.264 / H.265 umwandeln. Dazu gibt es einen Player für alle Codecs, einen Vorher/Nachher-Vergleich und einen Ordner-Abgleich.
 
 **Installieren:** `Butchies_Video_Converter-Setup.exe` herunterladen und starten. Du brauchst dafür keine Administratorrechte.
 Der Installer sucht das **Laufwerk mit dem meisten freien Speicher** und schlägt dort Programm- und Video-Ordner vor.
@@ -31,3 +31,6 @@ FFmpeg mit allen Codecs ist dabei (inklusive VMAF-Messung und HDR). WebView2 wir
 **Neu in 1.1.2**
 - Liegt ein Ordner im anderen (z. B. B = „FULL HD CINEMA\x265“ in A = „FULL HD CINEMA“), wird er beim äußeren Ordner **automatisch ausgelassen**. Es wird also keine Datei mehr mit sich selbst verglichen. Dazu kommt ein Hinweis
 - Neuer Schalter in den Abgleich-Regeln: „Unterordner mitlesen“ (an/aus)
+
+**Neu in 1.1.3**
+- Das Programm **merkt sich jetzt alles** bis zum nächsten Start: Design, Start-Animation an/aus, Auto/Manuell-Schalter, eigene Einstellungen (Codec, Zielgröße, Zeitplan …) und eigene Vorlagen. Bisher ging das beim Neustart verloren

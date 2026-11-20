@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 APP_NAME = 'Butchies Video Converter'
-VERSION = '1.1.2'
+VERSION = '1.1.3'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 UI = BASE / 'ui'
@@ -1061,7 +1061,17 @@ class Handler(BaseHTTPRequestHandler):
         LAST_PING[0] = time.time()
         try:
             if path in ('/', '/index.html'):
-                return self.send_file(UI / 'index.html', 'text/html; charset=utf-8')
+                # gespeicherte Einstellungen (Design, Auto/Manuell, Vorlagen) gleich mitgeben – vor dem ersten Zeichnen
+                html = (UI / 'index.html').read_text(encoding='utf-8')
+                conf = json.dumps({'ls': load_config().get('ls') or {}}, ensure_ascii=False).replace('</', '<\\/')
+                body = html.replace('<script>\n(()=>{', '<script>window.BVC_CONF=%s;</script>\n<script>\n(()=>{' % conf, 1).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                self.wfile.write(body)
+                return None
             if path.startswith('/fonts/'):
                 f = (UI / path.lstrip('/')).resolve()
                 if UI.resolve() in f.parents and f.is_file():
@@ -1189,7 +1199,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {'ok': True})
             if path == '/api/config':
                 conf = load_config()
-                for k in ('outdir', 'theme', 'intro', 'tmdb', 'ntfy', 'auto', 'presets'):
+                for k in ('outdir', 'theme', 'intro', 'tmdb', 'ntfy', 'auto', 'presets', 'ls'):
                     if k in d:
                         conf[k] = d[k]
                 save_config(conf)

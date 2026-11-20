@@ -514,7 +514,7 @@ dialog[open]{animation:dlg .3s ease}
         <div class="ahead"><span class="aic">📁</span><div class="atx"><b>Ausgabe &amp; Zeitplan</b><small id="sum-out">–</small></div>
           <div class="am"><button data-a="auto" class="on">Auto</button><button data-a="man">Manuell</button></div></div>
         <div class="adrawer"><div class="adin"><div class="form">
-        <div class="f full"><label>Ausgabeordner</label><div class="row" style="flex-wrap:nowrap"><input type="text" id="oDir" value="Videos\\Butchies Converter"><button type="button" class="btn sm real-only" id="oPick" title="Ordner wählen">📁</button><button type="button" class="btn sm real-only" id="oShow" title="Ordner öffnen">↗</button></div></div>
+        <div class="f full"><label>Ausgabeordner</label><div class="row" style="flex-wrap:nowrap"><input type="text" id="oDir" value="Videos\Butchies Converter"><button type="button" class="btn sm real-only" id="oPick" title="Ordner wählen">📁</button><button type="button" class="btn sm real-only" id="oShow" title="Ordner öffnen">↗</button></div></div>
         <div class="f full"><label>Dateiname</label><select id="oName"><option value="db">Titel (Jahr) – aus der Filmdatenbank</option><option value="orig">Original + Codec + Auflösung</option><option value="same">Wie das Original</option></select></div>
         <div class="f"><label>Start</label><select id="oStart"><option value="now">Sofort</option><option value="22">Heute 22:00</option><option value="1">Nachts 01:00</option><option value="3">Nachts 03:00</option></select></div>
         <div class="f"><label>Danach</label><select id="oAfter"><option value="none">Nichts</option><option value="sleep">Ruhezustand</option><option value="off">PC herunterfahren</option></select></div>
@@ -736,6 +736,9 @@ dialog[open]{animation:dlg .3s ease}
 const TOKEN=(location.hash||'').slice(1),REAL=!!TOKEN&&/^https?:$/.test(location.protocol);
 async function api(p,b){const r=await fetch(p,b===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Studio':TOKEN},body:JSON.stringify(b)});
   const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('Fehler '+r.status));return j}
+/* Einstellungen merken: im Programm in der Einstellungsdatei (der Port wechselt bei jedem Start, dann wäre localStorage leer) */
+const KV={t:0,get(k){const c=window.BVC_CONF;if(c&&c.ls&&k in c.ls)return c.ls[k];try{return localStorage.getItem(k)}catch(e){return null}},
+  set(k,v){try{localStorage.setItem(k,v)}catch(e){}const c=window.BVC_CONF;if(REAL&&c){c.ls=c.ls||{};c.ls[k]=v;clearTimeout(KV.t);KV.t=setTimeout(()=>api('/api/config',{ls:c.ls}).catch(()=>{}),250)}}};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const VID=/\.(mp4|m4v|mkv|mov|avi|ts|m2ts|mts|wmv|webm|flv|mpg|mpeg|vob|3gp|divx|ogv)$/i;
 const fmtMB=mb=>mb>=1024?(mb/1024).toFixed(2).replace('.',',')+' GB':Math.round(mb).toLocaleString('de-DE')+' MB';
@@ -802,8 +805,8 @@ function settings(){
 /* ================= KI-AUTOPILOT (Auto / Manuell) ================= */
 const AUTO_DEF={par:true,codec:true,quality:true,res:true,content:true,hdr:true,tracks:true,out:true,probe:true,cmp:true};
 let AUTO=Object.assign({},AUTO_DEF);
-try{const sv=JSON.parse(localStorage.getItem('bvc-auto')||'null');if(sv)Object.assign(AUTO,sv)}catch(e){}
-const saveAuto=()=>{try{localStorage.setItem('bvc-auto',JSON.stringify(AUTO))}catch(e){}};
+try{const sv=JSON.parse(KV.get('bvc-auto')||'null');if(sv)Object.assign(AUTO,sv)}catch(e){}
+const saveAuto=()=>KV.set('bvc-auto',JSON.stringify(AUTO));
 function setFam(f){if(S.fam!==f){S.fam=f;$$('#sFam button').forEach(x=>x.classList.toggle('on',x.dataset.v===f));refreshEnc()}}
 function setEnc(v){if($('#sEnc').value!==v&&[...$('#sEnc').options].some(o=>o.value===v)){$('#sEnc').value=v;refreshPre()}}
 function setSel(id,v){const e=$(id);if(e&&e.value!=v&&[...e.options].some(o=>o.value==v))e.value=v}
@@ -908,14 +911,14 @@ const PRESETS=[
   {id:'handy',n:'📱 Handy 720p',v:{fam:'h264',enc:'libx264',prof:'high',pre:'medium',cont:'mp4',mode:'size',min:300,max:600,res:'720',yt:false}},
   {id:'yt',n:'🚀 YouTube',v:{yt:true}},
   {id:'gpu',n:'⚡ Schnell (Grafikkarte)',v:{fam:'h265',enc:'hevc_amf',prof:'main10',pre:'quality',cont:'mkv',yt:false}}];
-let MYP=[];try{MYP=JSON.parse(localStorage.getItem('bvc-presets')||'[]')}catch(e){}
+let MYP=[];try{MYP=JSON.parse(KV.get('bvc-presets')||'[]')}catch(e){}
 function renderPresets(){
   const all=[...PRESETS,...MYP];
   $('#presetChips').innerHTML=all.map(p=>`<button type="button" class="pchip" data-p="${p.id}">${esc(p.n)}</button>`).join('')+'<button type="button" class="pchip" id="pSave">＋ Speichern</button>';
   $$('[data-p]').forEach(b=>b.onclick=()=>{applyPreset(all.find(p=>p.id===b.dataset.p));$$('.pchip').forEach(c=>c.classList.toggle('on',c===b))});
   $('#pSave').onclick=()=>ask('Vorlage speichern','<p>Name der Vorlage:</p><input type="text" id="pName" placeholder="z. B. Serien 720p" style="margin-top:6px">',[{t:'Abbrechen'},{t:'Speichern',cls:'pri',fn:()=>{const n=($('#pName').value||'Meine Vorlage').trim();
     const v={fam:S.fam,enc:$('#sEnc').value,prof:$('#sProf').value,pre:$('#sPre').value,cont:$('#sCont').value,mode:S.mode,crf:+$('#sCrf').value,min:+$('#sMin').value,max:+$('#sMax').value,res:$('#sRes').value,yt:$('#sYt').checked};
-    MYP.push({id:'my'+Date.now(),n:'⭐ '+n,v});try{localStorage.setItem('bvc-presets',JSON.stringify(MYP))}catch(e){}renderPresets();toast(`Vorlage „${n}“ gespeichert.`)}}]);
+    MYP.push({id:'my'+Date.now(),n:'⭐ '+n,v});KV.set('bvc-presets',JSON.stringify(MYP));renderPresets();toast(`Vorlage „${n}“ gespeichert.`)}}]);
 }
 function applyPreset(p){
   const v=p.v;
@@ -1596,7 +1599,7 @@ const THEMES=[
   ['mono','Mitternacht','Schwarz-Weiß','#0a0a0a','#e5e5e5','#9ca3af','index',"'Archivo Black'"],
   ['light','Hell','Für den Tag','#f6f2fb','#7c3aed','#db2777','tag','Manrope']];
 let curTheme='gold';
-function store(k,v){try{v===undefined?void 0:localStorage.setItem(k,v);return localStorage.getItem(k)}catch(e){return null}}
+function store(k,v){if(v!==undefined)KV.set(k,v);return KV.get(k)}
 function applyTheme(id){const t=THEMES.find(x=>x[0]===id)||THEMES[4];curTheme=t[0];document.body.dataset.theme=t[0];document.body.dataset.skin=t[6];store('bvc-theme',t[0]);
   try{draw(lastPts||[],lastTarget||1,lastMax||0)}catch(e){}}
 function openThemes(){const g=$('#themeGrid');g.innerHTML=THEMES.map(([id,n,sub,bg,a,b,,f])=>`<button type="button" class="theme-opt${id==='light'?' is-light':''}" data-th="${id}" aria-pressed="${id===curTheme}" style="--tbg:${bg};--ta:${a};--tb:${b};--tf:${f}"><div class="sw"></div><b>${n}</b><small>${sub}</small><span class="tick"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></span></button>`).join('');
@@ -2018,6 +2021,7 @@ async function realInit(){
   $('#verBadge').textContent='Version '+INFO.version+(INFO.gpus&&INFO.gpus.length?' · '+INFO.gpus.map(g=>g.name.replace(/\(TM\)|\(R\)|Graphics/gi,'').replace(/\s+/g,' ').trim()).join(' + '):'');
   if(!INFO.ffmpeg)toast('FFmpeg fehlt – bitte das Programm neu installieren.');
   if(INFO.config.tmdb)$('#cTmdb').value=INFO.config.tmdb;
+  $('#oDir').value=INFO.outdir;
   $('#oTopic').value=INFO.config.ntfy||('butchies-'+Math.random().toString(36).slice(2,10));
   if(!INFO.config.ntfy)api('/api/config',{ntfy:$('#oTopic').value}).catch(()=>{});
   markEnc();applyAuto();update();
@@ -2049,6 +2053,17 @@ $('#oPick').onclick=async()=>{try{const r=await api('/api/pick',{kind:'folder',s
 $('#oShow').onclick=()=>api('/api/show',{path:$('#oDir').value}).catch(e=>toast(e.message));
 $('#oDir').addEventListener('change',()=>{if(REAL&&!AUTO.out)api('/api/config',{outdir:$('#oDir').value}).then(x=>{if(INFO)INFO.outdir=x.outdir}).catch(()=>{})});
 $('#oTopic').addEventListener('change',()=>{if(REAL)api('/api/config',{ntfy:$('#oTopic').value}).catch(()=>{})});
+/* Eigene (manuelle) Einstellungen merken und beim nächsten Start wiederherstellen */
+const SETIDS=['#sEnc','#sProf','#sPre','#sTune','#sLvl','#sCont','#sMin','#sMax','#s2p','#sCrf','#sCbr','#sRes','#sFps','#sAud','#sAbr','#sAuto','#sYt','#sHdr',
+  '#oName','#oStart','#oAfter','#oPush','#parMode','#cTh','#cVid','#cImg','#cDb','#cSub','#pUp','#abHover'];
+function saveSet(){const v={fam:S.fam,mode:S.mode};SETIDS.forEach(id=>{const e=$(id);if(e)v[id]=e.type==='checkbox'?e.checked:e.value});KV.set('bvc-set',JSON.stringify(v))}
+function loadSet(){let v;try{v=JSON.parse(KV.get('bvc-set')||'null')}catch(e){}if(!v)return;
+  if(v.fam)setFam(v.fam);if(v['#sEnc'])setEnc(v['#sEnc']);if(v.mode)setModeS(v.mode);
+  SETIDS.forEach(id=>{const e=$(id);if(!e||!(id in v)||id==='#sEnc')return;if(e.type==='checkbox')e.checked=!!v[id];else if(e.tagName==='SELECT'){if([...e.options].some(o=>o.value==v[id]))e.value=v[id]}else e.value=v[id]});
+  try{applyUp(false)}catch(e){}}
+loadSet();
+SETIDS.forEach(id=>{const e=$(id);if(e)e.addEventListener('change',()=>setTimeout(saveSet,0))});
+$$('#sFam button,#sMode button,.am button').forEach(b=>b.addEventListener('click',()=>setTimeout(saveSet,0)));
 bindRows();renderPresets();applyAuto();applyCmpAuto();renderBil();
 if(REAL)realInit();
 update();
