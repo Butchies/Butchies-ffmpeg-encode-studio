@@ -321,6 +321,8 @@ td .p{color:var(--muted);font-size:11px;word-break:break-all}
 .fc input{accent-color:var(--acc);margin-top:3px;width:16px;height:16px;flex:none}
 tr.mk td{background:color-mix(in srgb,var(--bad) 12%,transparent)}
 .st{font-size:11px;color:var(--mut);margin-top:4px}
+.qi .rm{border:0;background:var(--panel2);color:var(--muted);border-radius:6px;padding:1px 7px;cursor:pointer;margin-left:8px;font-size:12px;line-height:18px}
+.qi .rm:hover{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
 .qi .pb{border:0;background:var(--panel2);color:var(--acc);border-radius:6px;padding:1px 7px;cursor:pointer;margin-right:6px;font-size:12px}
 @media (max-width:900px){.grid21{grid-template-columns:1fr}}
 @media (max-width:900px){.grid,.cmpgrid{grid-template-columns:1fr}.mon{grid-template-columns:repeat(2,1fr)}.tabs{margin-left:0;width:100%}.tab{flex:1}}
@@ -1255,6 +1257,17 @@ function demo(){
   if(!selId)selId=Q[0].id; renderQ();update(); log('',`Demo: ${D.length} Dateien geladen.`);
   log('warn','KI-Prüflauf: „Download_abgebrochen.mp4“ ist defekt und wird übersprungen.');
 }
+/* Einzelne Datei aus der Liste nehmen (die Datei selbst bleibt auf der Platte) */
+function rmQ(q){
+  const busy=q.state==='run'||q.state==='queued';
+  const drop=()=>{const i=Q.indexOf(q);if(i<0)return;Q.splice(i,1);if(q.src)q.src.queued=false;
+    if(selId===q.id)selId=(Q[i]||Q[i-1]||{}).id||null;renderQ();update();
+    toast(`„${q.name}“ aus der Liste genommen.`,busy?null:'Rückgängig',()=>{Q.splice(Math.min(i,Q.length),0,q);if(!selId)selId=q.id;renderQ();update()})};
+  if(!busy)return drop();
+  if(!REAL||!q.jid){if(q.state==='run')return toast('Läuft gerade – erst „Stopp“ drücken.');q.state='stop';return drop()}
+  ask('✕ Umwandlung abbrechen?',`<p>„<b style="color:var(--text)">${esc(q.name)}</b>“ ${q.state==='run'?'wird gerade umgewandelt':'wartet noch'}. Abbrechen und aus der Liste nehmen? Die Originaldatei bleibt erhalten, die halb fertige Datei wird gelöscht.</p>`,
+    [{t:'Nein, weiter umwandeln'},{t:'✕ Abbrechen und entfernen',cls:'pri',fn:()=>{api('/api/cancel',{ids:[q.jid]}).catch(()=>{});log('bad',`Entfernt: ${esc(q.name)}`);drop()}}]);
+}
 function renderQ(){
   if(REAL&&INFO&&!RESTORING)saveSession();
   const s=settings();
@@ -1266,13 +1279,14 @@ function renderQ(){
     const st=q.bad&&!q.force?'<span class="bad">⚠ defekt</span>':q.state==='done'?'✓ fertig'+(q.out?`<button class="fold" data-show="${q.id}" title="Im Ordner zeigen">📂</button>`:''):q.state==='run'?'läuft…'+(q.slot&&REAL?` · ${wIcon(q.slot)} ${esc(wName(q.slot))}`:''):q.state==='queued'?'wartet'+(q.slot&&REAL?` · ${wIcon(q.slot)} ${esc(wName(q.slot))}`:''):q.state==='err'?'<span class="bad">✕ Fehler</span>':q.state==='stop'?'abgebrochen':q.state==='skip'?'übersprungen':'';
     return `<div class="qi ${q.id===selId?'sel':''} ${q.state} ${q.bad&&!q.force?'isbad':''}" data-id="${q.id}">
       <div class="nm" title="${esc(q.path)}"><button class="pb" data-play="${q.id}" title="Im Player abspielen">▶</button>${esc(q.name)}</div>
-      <div class="sc" style="color:${c}">${a.score} · ${lb}</div>
+      <div class="sc"><span style="color:${c}">${a.score} · ${lb}</span><button class="rm" data-rm="${q.id}" title="${q.state==='run'||q.state==='queued'?'Abbrechen und aus der Liste nehmen':'Aus der Liste nehmen (Datei bleibt erhalten)'}">✕</button></div>
       <div class="meta">${q.w?q.w+'×'+q.h:'? × ?'} · ${q.dur?fmtT(q.dur):'?'} · ${fmtMB(q.size/1048576)} → ${a.outW}×${a.outH}, ~${fmtMB(a.est)}</div>
       <div class="meta" style="text-align:right">${st}</div>
       <div class="bar"><i style="width:${q.prog*100}%"></i></div></div>`}).join('');
   $$('#queue .qi').forEach(el=>el.onclick=()=>{selId=+el.dataset.id;if(!RUN.on)anaFold(false);renderQ();update()});
   $$('[data-show]').forEach(b=>b.onclick=e=>{e.stopPropagation();const q=Q.find(x=>x.id==b.dataset.show);if(q&&q.out)api('/api/show',{path:q.out}).catch(()=>{})});
   $$('[data-play]').forEach(b=>b.onclick=e=>{e.stopPropagation();openInPlayer(Q.find(x=>x.id==b.dataset.play));showTab('play')});
+  $$('[data-rm]').forEach(b=>b.onclick=e=>{e.stopPropagation();const q=Q.find(x=>x.id==b.dataset.rm);if(q)rmQ(q)});
 }
 function update(){
   applyAuto();
