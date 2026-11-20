@@ -486,6 +486,7 @@ dialog[open]{animation:dlg .3s ease}
   <button class="tab" data-v="cmp">🗂️ Ordner-Abgleich</button>
  </nav>
  <div class="top-actions">
+  <button type="button" class="btn ghost" id="queueJumpBtn" title="Zur Warteschlange" onclick="showTab('conv'); document.getElementById('filesCard').scrollIntoView({behavior:'smooth',block:'start'});"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h11"/></svg><span class="lbl">Warteschlange</span></button>
   <button type="button" class="btn ghost" id="themeBtn"><span class="theme-dot" aria-hidden="true"></span><span class="lbl">Design</span></button>
   <button type="button" class="btn ghost quit" id="quitBtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg><span class="lbl">Beenden</span></button>
  </div>
