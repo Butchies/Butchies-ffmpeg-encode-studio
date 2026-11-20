@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 APP_NAME = 'Butchies Video Converter'
-VERSION = '1.1.1'
+VERSION = '1.1.2'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 UI = BASE / 'ui'
@@ -729,7 +729,7 @@ def start_task(fn, *args):
 
 
 # ---------- Ordner-Abgleich ----------
-def scan(folder, limit=100000, T=None):
+def scan(folder, limit=100000, T=None, recursive=True):
     """Ordner rekursiv einlesen. os.scandir liefert unter Windows die Größe gleich mit (schnell, auch übers Netzwerk/NAS).
     Fortschritt: jeder Unterordner bekommt einen gleichen Anteil vom Anteil seines Elternordners."""
     root = Path(folder)
@@ -762,6 +762,9 @@ def scan(folder, limit=100000, T=None):
         if T is not None:
             T['pct'] = min(99, int(done[0] * 100))
             T['phase'] = '%s Dateien gefunden · %s' % (format(len(out), ',').replace(',', '.'), Path(d).name or str(d))
+        if not recursive:
+            done[0] += w - share
+            return
         for sub in sorted(subs, key=str.lower):
             walk(sub, share)
     walk(root, 1.0)
@@ -769,9 +772,9 @@ def scan(folder, limit=100000, T=None):
     return out
 
 
-def task_scan(tid, folder):
+def task_scan(tid, folder, recursive=True):
     T = TASKS[tid]
-    files = scan(folder, T=T)
+    files = scan(folder, T=T, recursive=recursive)
     T['result'] = {'root': str(Path(folder)), 'files': files}
     T['pct'], T['state'] = 100, 'fertig'
 
@@ -1146,7 +1149,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/scan':
                 if not Path(d.get('path', '')).is_dir():
                     raise ValueError('Ordner nicht gefunden')
-                return self.send_json(200, {'task': start_task(task_scan, d.get('path', ''))})
+                return self.send_json(200, {'task': start_task(task_scan, d.get('path', ''), d.get('recursive', True) is not False)})
             if path == '/api/hashtask':
                 return self.send_json(200, {'task': start_task(task_hash, [p for p in d.get('paths', [])][:2000])})
             if path == '/api/hash':

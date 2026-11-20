@@ -675,6 +675,7 @@ dialog[open]{animation:dlg .3s ease}
     <div class="adrawer"><div class="adin"><div class="form">
       <div class="f"><label>Ähnlich ab (%)</label><input type="number" id="cTh" value="60" min="30" max="99"></div>
       <div class="f"><label>Dateien</label><label class="chk" style="min-height:42px"><input type="checkbox" id="cVid" checked> nur Videodateien</label></div>
+      <div class="f full real-only"><label class="chk"><input type="checkbox" id="cSub" checked> Unterordner mitlesen (ein Ordner, der im anderen liegt, wird dabei immer ausgelassen)</label></div>
       <div class="f full"><label class="chk"><input type="checkbox" id="cImg" checked> 🖼 Bild-Abgleich: gleicher Film trotz anderem Namen (vergleicht Standbilder)</label></div>
       <div class="f full"><label class="chk"><input type="checkbox" id="cDb" checked> 🎬 Filmdatenbank: Titel + Jahr erkennen</label></div>
       <div class="f full real-only"><label>TMDB-Schlüssel (freiwillig, für deutsche Original-Titel)</label><input type="text" id="cTmdb" placeholder="kostenlos auf themoviedb.org → Einstellungen → API"><div class="hint" style="margin:0">Ohne Schlüssel liest die KI Titel und Jahr aus dem Dateinamen.</div></div>
@@ -1385,7 +1386,7 @@ function demoDir(side){const L=side==='A'?DEMO_A:DEMO_B;const sz=[8.1,58,21,4.4,
 ['A','B'].forEach(s=>{makeDrop($('#drop'+s),l=>setDir(s,l),s);$('#i'+s).onchange=e=>{setDir(s,[...e.target.files]);e.target.value=''}});
 $$('[data-pick]').forEach(b=>b.onclick=async()=>{if(!REAL)return $('#i'+b.dataset.pick).click();try{const r=await api('/api/pick',{kind:'folder'});if(r.paths[0])realScan(b.dataset.pick,r.paths[0])}catch(e){toast(e.message)}});
 $$('[data-demo]').forEach(b=>b.onclick=()=>demoDir(b.dataset.demo));
-function autoCmp(){applyCmpAuto();if(DIR.A.length&&DIR.B.length)compare();else{CMP=null;$('#resTabs').innerHTML='';$('#cmpTbl').innerHTML=`<div class="empty">${DIR.A.length||DIR.B.length?'Noch den zweiten Ordner laden – der Abgleich startet dann automatisch.':'Ordner A und B laden (oder Demo) – der Abgleich startet automatisch.'}</div>`}}
+function autoCmp(){applyCmpAuto();if(REAL)applyNest();if(DIR.A.length&&DIR.B.length)compare();else{CMP=null;$('#resTabs').innerHTML='';$('#cmpTbl').innerHTML=`<div class="empty">${DIR.A.length||DIR.B.length?'Noch den zweiten Ordner laden – der Abgleich startet dann automatisch.':'Ordner A und B laden (oder Demo) – der Abgleich startet automatisch.'}</div>`}}
 
 let CMP=null, cTab='all';
 function compare(){
@@ -1397,7 +1398,7 @@ function compare(){
   const oldHash=new Map();if(CMP)[...CMP.same,...CMP.similar].forEach(r=>r.hash&&oldHash.set(r.a.u+':'+r.b.u,r.hash));
   for(const a of A){
     const cand=new Set();a.n.tokens.forEach(t=>(idx.get(t)||[]).forEach(i=>cand.add(i)));
-    let best=null,bs=0;cand.forEach(i=>{if(usedB.has(B[i]))return;const s=sim(a,B[i]);if(s>bs){bs=s;best=B[i]}});
+    let best=null,bs=0;cand.forEach(i=>{if(usedB.has(B[i])||(a.full&&a.full===B[i].full))return;const s=sim(a,B[i]);if(s>bs){bs=s;best=B[i]}});
     const r={a,b:best,s:bs,hash:best?oldHash.get(a.u+':'+best.u):null};
     if(best&&(bs>=.9||(a.name.toLowerCase()===best.name.toLowerCase()&&a.size===best.size))){r.type='same';same.push(r);usedB.add(best)}
     else if(best&&bs>=th){r.type='similar';similar.push(r);usedB.add(best)}
@@ -1510,7 +1511,7 @@ function heurTitle(name){
 }
 function dbTitle(name){if(typeof DBC!=='undefined'&&DBC[name])return DBC[name];const h=heurTitle(name);if(!h)return null;return h.ep?`${h.t} - ${h.ep}`:`${h.t} (${h.y})`}
 const CS=()=>({vid:$('#cVid').checked,th:(+$('#cTh').value||60)/100,img:$('#cImg').checked,db:$('#cDb').checked});
-function applyCmpAuto(){if(AUTO.cmp){$('#cVid').checked=true;$('#cTh').value=60;$('#cImg').checked=true;$('#cDb').checked=true}
+function applyCmpAuto(){if(AUTO.cmp){$('#cSub').checked=true;$('#cVid').checked=true;$('#cTh').value=60;$('#cImg').checked=true;$('#cDb').checked=true}
   const c=CS();const e=$('#sum-cmp');if(e)e.textContent=(AUTO.cmp?'KI: ':'Manuell: ')+['Name',c.img?'Bild':null,c.db?'Filmdatenbank':null].filter(Boolean).join(' + ')+` · ähnlich ab ${Math.round(c.th*100)} %${c.vid?' · nur Videos':''}`}
 ['#cImg','#cDb'].forEach(id=>$(id).onchange=()=>autoCmp());
 /* Bild-Fingerabdruck */
@@ -1932,17 +1933,32 @@ async function realAB(q,frac){
   }catch(err){$('#abInfo').textContent='Fehler: '+err.message;toast('Vorher/Nachher fehlgeschlagen: '+err.message)}
 }
 /* ---------- Ordner-Abgleich ---------- */
-const ROOT={A:'',B:''};
+const ROOT={A:'',B:''},RAW={A:[],B:[]},SRC={A:'',B:''};let NEST='';
+const pnorm=p=>String(p||'').replace(/\\/g,'/').replace(/\/+$/,'').toLowerCase()+'/';
+/* Liegt ein Ordner im anderen? Dann den inneren beim äußeren auslassen – sonst würde jede Datei mit sich selbst verglichen */
+function applyNest(){
+  const a=pnorm(ROOT.A),b=pnorm(ROOT.B);let msg='';
+  DIR.A=RAW.A.slice();DIR.B=RAW.B.slice();
+  if(ROOT.A&&ROOT.B){
+    if(a===b)msg='⚠ Ordner A und B sind derselbe Ordner – bitte zwei verschiedene Ordner wählen.';
+    else if(b.startsWith(a)){DIR.A=RAW.A.filter(x=>!pnorm(x.full).startsWith(b));msg=`Ordner B liegt in Ordner A – „${ROOT.B}“ wird bei A ausgelassen (${RAW.A.length-DIR.A.length} Dateien).`}
+    else if(a.startsWith(b)){DIR.B=RAW.B.filter(x=>!pnorm(x.full).startsWith(a));msg=`Ordner A liegt in Ordner B – „${ROOT.A}“ wird bei B ausgelassen (${RAW.B.length-DIR.B.length} Dateien).`}
+  }
+  ['A','B'].forEach(x=>{if(ROOT[x]){cntDir(x);$('#cnt'+x).textContent+=' · '+ROOT[x]}});
+  if(msg&&msg!==NEST)toast(msg);NEST=msg;
+  if(a===b&&ROOT.A&&ROOT.B){DIR.B=[]}
+}
+$('#cSub').addEventListener('change',()=>{['A','B'].forEach(x=>{if(SRC[x])realScan(x,SRC[x])})});
 function prog(id,txtId,pctId,p,txt){const el=$('#'+id);if(p==null){el.hidden=true;return}el.hidden=false;const n=Math.floor(p/5);el.querySelectorAll('.segbar i').forEach((e,i)=>e.classList.toggle('on',i<n));
   el.querySelector('.segbar').classList.toggle('done',p>=100);$('#'+pctId).textContent=Math.floor(p)+' %';if(txt!=null)$('#'+txtId).textContent=txt}
 async function realScan(side,path){
   $('#cnt'+side).textContent='lese …';prog('scan'+side,'scanTxt'+side,'scanPct'+side,0,'Lese '+path+' …');
-  try{const {task}=await api('/api/scan',{path});
+  try{const {task}=await api('/api/scan',{path,recursive:$('#cSub').checked});
     const r=await waitTask(task,t=>{prog('scan'+side,'scanTxt'+side,'scanPct'+side,t.pct||0,t.phase||'Lese Ordner …');$('#cnt'+side).textContent=`lese … ${t.pct||0} %`});
     prog('scan'+side,'scanTxt'+side,'scanPct'+side,100,`Fertig: ${r.files.length.toLocaleString('de-DE')} Dateien`);setTimeout(()=>prog('scan'+side,null,null,null),2500);
-    ROOT[side]=r.root;
-    DIR[side]=r.files.map(f=>({u:++EUID,side,name:f.name,path:f.path,full:f.full,size:f.size,n:norm(f.name)}));
-    cntDir(side);$('#cnt'+side).textContent+=' · '+r.root;autoCmp();
+    ROOT[side]=r.root;SRC[side]=path;
+    RAW[side]=r.files.map(f=>({u:++EUID,side,name:f.name,path:f.path,full:f.full,size:f.size,n:norm(f.name)}));
+    autoCmp();
   }catch(err){prog('scan'+side,null,null,null);toast('Fehler: '+err.message);cntDir(side)}
 }
 async function realHash(){
@@ -1967,10 +1983,10 @@ async function realFp(){
 async function realDelete(list){
   try{const {results}=await api('/api/delete',{items:list.map(x=>({path:x.full,root:ROOT[x.side],protect:prot(x.side)}))});
     const ok=[],moves=[],bad=[];results.forEach((r,i)=>{if(r.ok){ok.push(list[i]);if(r.moved)moves.push({from:r.path,to:r.moved,x:list[i]})}else bad.push(list[i].name+': '+r.error)});
-    ok.forEach(x=>{DIR[x.side]=DIR[x.side].filter(y=>y!==x);MK.delete(x)});cntDir('A');cntDir('B');autoCmp();updMk();
+    ok.forEach(x=>{DIR[x.side]=DIR[x.side].filter(y=>y!==x);RAW[x.side]=RAW[x.side].filter(y=>y!==x);MK.delete(x)});cntDir('A');cntDir('B');autoCmp();updMk();
     if(bad.length)toast('Nicht gelöscht: '+bad.join(' · '));
     else if(moves.length)toast(`${ok.length} Datei(en) entfernt (${moves.length} im Ordner „_Papierkorb“${ok.length>moves.length?', Rest im Windows-Papierkorb':''}).`,'Rückgängig',async()=>{
-      await api('/api/restore',{moves:moves.map(m=>({from:m.from,to:m.to}))});moves.forEach(m=>{if(!DIR[m.x.side].includes(m.x))DIR[m.x.side].push(m.x)});autoCmp();toast('Wiederhergestellt.')});
+      await api('/api/restore',{moves:moves.map(m=>({from:m.from,to:m.to}))});moves.forEach(m=>{if(!RAW[m.x.side].includes(m.x))RAW[m.x.side].push(m.x)});autoCmp();toast('Wiederhergestellt.')});
     else toast(`${ok.length} Datei(en) in den Windows-Papierkorb verschoben.`);
   }catch(err){toast('Fehler: '+err.message)}
 }
