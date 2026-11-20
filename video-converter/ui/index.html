@@ -420,6 +420,13 @@ dialog[open]{animation:dlg .3s ease}
 .upbadge{position:absolute;top:10px;right:10px;font:700 11.5px var(--fb);padding:4px 9px;border-radius:7px;background:rgba(0,0,0,.6);color:#fff;pointer-events:none;z-index:2}
 .upbadge i{font-style:normal;color:var(--a)}
 @media (max-width:760px){.top{padding:10px 12px;position:static}.tabs{margin-left:0;width:100%}.tab{flex:1 1 auto;justify-content:center}.brand small{display:none}.top-actions .lbl{display:none}}
+/* ---------- Jahreszeiten (freigegeben, Quelle: ui/seasons-src) ---------- */
+/* Zusatzebene: Originaldesign und Originalhintergrund bleiben unangetastet. */
+.ssn-layer{position:absolute;inset:0;z-index:1;overflow:hidden;pointer-events:none;contain:layout paint}
+.ssn-layer canvas{display:block;width:100%;height:100%;background:transparent;border:0;border-radius:0}
+.ssn-caption{position:absolute;z-index:2;left:0;right:0;bottom:8%;text-align:center;pointer-events:none;color:var(--b);font:italic clamp(14px,2vw,24px) Georgia,serif;text-shadow:0 0 18px var(--glow)}
+.ssn-layer.ssn-light .ssn-caption{color:var(--a)}
+@media(prefers-reduced-motion:reduce){.ssn-layer canvas{opacity:.8}}
 </style>
 </head>
 <body data-theme="gold" data-skin="lounge">
@@ -753,6 +760,7 @@ dialog[open]{animation:dlg .3s ease}
   <p class="hint" style="margin:0">Die Designs der Butchies-Webseite – mit Farben und Schriften, wie im Encode Studio.</p>
   <div class="themes" id="themeGrid"></div>
   <label class="check"><input type="checkbox" id="introCheck" checked> Start-Animation beim Öffnen zeigen</label>
+  <label class="check"><input type="checkbox" id="ssnCheck" checked> 🍂 Jahreszeit beim Starten und Beenden zeigen <small style="opacity:.7">(je 2 Wochen ab 1. März, Juni, September, Dezember)</small></label>
   <div class="dlg-actions"><button type="button" class="btn pri" id="thOk">Fertig</button></div>
  </div>
 </dialog>
@@ -776,6 +784,27 @@ dialog[open]{animation:dlg .3s ease}
 <div class="foot demo-only">Vorschau · Die Analyse rechnet echt mit den Daten deiner Videos (Dauer, Auflösung, Größe) · Die Umwandlung selbst wird hier nur simuliert – echtes Kodieren übernimmt später ffmpeg im Windows-Programm.</div>
 </div>
 
+<script>
+/* Butchies Jahreszeiten: keine Abhängigkeiten, keine Feiertage. */
+(function(global){'use strict';
+const INFO={spring:{name:'Frühling',kicker:'Der Frühling erwacht',tag:'Blüten tanzen im Licht',bye:'Bis bald im Frühling!'},summer:{name:'Sommer',kicker:'Ein Hauch von Sommer',tag:'Warme Sonnenstrahlen und sanfte Bewegung',bye:'Bis bald im Sommer!'},autumn:{name:'Herbst',kicker:'Goldener Herbst',tag:'Blätter wirbeln durch die Luft',bye:'Bis bald im Herbst!'},winter:{name:'Winter',kicker:'Stille Winterzeit',tag:'Schneekristalle schweben herab',bye:'Bis bald im Winter!'}};
+const reduced=()=>global.matchMedia&&global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function pick(date){const m=(date||new Date()).getMonth()+1;return m>=3&&m<=5?'spring':m>=6&&m<=8?'summer':m>=9&&m<=11?'autumn':'winter'}
+function info(key){const i=INFO[key]||INFO.spring;return {...i,icon:''}}
+function mount(container,key,mode){if(!container)throw Error('Seasons.mount: Container fehlt');key=INFO[key]?key:pick();const old=container.querySelector('.ssn-layer');if(old)old.remove();const layer=document.createElement('div');layer.className='ssn-layer ssn-'+key;layer.setAttribute('aria-hidden','true');const canvas=document.createElement('canvas');layer.appendChild(canvas);container.appendChild(layer);const ctx=canvas.getContext('2d');let seed=45631;function rand(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}const particles=Array.from({length:110},(_,i)=>({x:.57+rand()*.43,y:rand(),v:.025+rand()*.065,r:2+rand()*5,p:rand()*6.28,k:i%4}));let raf=0,dead=false,last=0,elapsed=0,w=1100,h=620;
+function resize(){const r=container.getBoundingClientRect();w=Math.max(1,r.width);h=Math.max(1,r.height);const d=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(w*d);canvas.height=Math.round(h*d);ctx.setTransform(d,0,0,d,0,0)}
+function petal(x,y,r,a,color){ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(0,0);ctx.bezierCurveTo(-r,-r*.7,-r*.7,-r*1.8,0,-r*2);ctx.bezierCurveTo(r*.7,-r*1.8,r,-r*.7,0,0);ctx.fill();ctx.restore()}
+function leaf(x,y,r,a,color){ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(0,0);ctx.quadraticCurveTo(-r,-r,0,-r*2.1);ctx.quadraticCurveTo(r,-r,0,0);ctx.fill();ctx.strokeStyle='rgba(60,34,13,.45)';ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-r*1.8);ctx.stroke();ctx.restore()}
+function snow(x,y,r,a){ctx.save();ctx.translate(x,y);ctx.rotate(a);ctx.strokeStyle=document.body.dataset.theme==='light'?'rgba(70,110,170,.75)':'rgba(235,246,255,.8)';ctx.lineWidth=1;for(let i=0;i<6;i++){ctx.rotate(Math.PI/3);ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-r);ctx.moveTo(0,-r*.55);ctx.lineTo(-r*.25,-r*.75);ctx.moveTo(0,-r*.55);ctx.lineTo(r*.25,-r*.75);ctx.stroke()}ctx.restore()}
+function render(now){if(dead)return;const dt=last?Math.min(.05,(now-last)/1000):0;last=now;elapsed+=dt;ctx.clearRect(0,0,w,h);const x=w*.79,y=h*.47;
+if(key==='summer'){const grad=ctx.createRadialGradient(x,y,8,x,y,w*.27);grad.addColorStop(0,'rgba(255,209,118,.33)');grad.addColorStop(.5,'rgba(255,182,75,.1)');grad.addColorStop(1,'rgba(255,182,75,0)');ctx.fillStyle=grad;ctx.fillRect(w*.5,0,w*.5,h);ctx.save();ctx.translate(x,y);ctx.rotate(elapsed*.045);for(let i=0;i<18;i++){ctx.rotate(Math.PI/9);ctx.fillStyle='rgba(255,210,128,.045)';ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-14,-h*.45);ctx.lineTo(14,-h*.45);ctx.fill()}ctx.restore();ctx.save();ctx.shadowColor='#ffc66f';ctx.shadowBlur=38;ctx.fillStyle='#ffdfa4';ctx.beginPath();ctx.arc(x,y,Math.min(w,h)*.087,0,7);ctx.fill();ctx.restore()}
+else{const rgb=key==='spring'?'246,161,194':key==='autumn'?'226,134,53':'160,207,247';const grad=ctx.createRadialGradient(x,y,8,x,y,w*.27);grad.addColorStop(0,'rgba('+rgb+',.13)');grad.addColorStop(1,'rgba('+rgb+',0)');ctx.fillStyle=grad;ctx.fillRect(w*.5,0,w*.5,h)}
+for(const p of particles){const px=p.x*w,py=p.y*h,sz=p.r*Math.min(w/1100,h/620)*1.3;if(key==='spring')petal(px,py,sz,elapsed*.6+p.p,['#f5b6ce','#f8d6e0','#e9a4c6','#ffdce8'][p.k]);else if(key==='summer'){ctx.fillStyle='rgba(255,224,148,'+(.18+.6*(.5+.5*Math.sin(elapsed*2+p.p)))+')';ctx.beginPath();ctx.arc(px,py,Math.max(1,sz*.4),0,7);ctx.fill()}else if(key==='autumn')leaf(px,py,sz*1.5,elapsed+p.p,['#e9ac49','#c65c32','#db8741','#ad492a'][p.k]);else snow(px,py,sz,elapsed*.3+p.p);p.y+=dt*p.v*(key==='autumn'?1.25:.8);p.x+=Math.sin(elapsed+p.p)*dt*.012;if(p.y>1.05){p.y=-.04;p.x=.57+rand()*.43}}
+if(elapsed<4.2&&!reduced())raf=requestAnimationFrame(render)}
+resize();if(reduced())render(0);else raf=requestAnimationFrame(render);return {stop(){dead=true;cancelAnimationFrame(raf);layer.remove()}}}
+global.Seasons={pick,info,mount};
+})(window);
+</script>
 <script>
 (()=>{
 const TOKEN=(location.hash||'').slice(1),REAL=!!TOKEN&&/^https?:$/.test(location.protocol);
@@ -1752,19 +1781,24 @@ function applyTheme(id){const t=THEMES.find(x=>x[0]===id)||THEMES[4];curTheme=t[
   try{draw(lastPts||[],lastTarget||1,lastMax||0)}catch(e){}}
 function openThemes(){const g=$('#themeGrid');g.innerHTML=THEMES.map(([id,n,sub,bg,a,b,,f])=>`<button type="button" class="theme-opt${id==='light'?' is-light':''}" data-th="${id}" aria-pressed="${id===curTheme}" style="--tbg:${bg};--ta:${a};--tb:${b};--tf:${f}"><div class="sw"></div><b>${n}</b><small>${sub}</small><span class="tick"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></span></button>`).join('');
   $$('[data-th]').forEach(b=>b.onclick=()=>{applyTheme(b.dataset.th);$$('[data-th]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))});
-  $('#introCheck').checked=store('bvc-intro')!=='0';const d=$('#themeDlg');try{d.showModal()}catch(e){d.setAttribute('open','')}}
+  $('#introCheck').checked=store('bvc-intro')!=='0';$('#ssnCheck').checked=store('bvc-seasons')!=='0';const d=$('#themeDlg');try{d.showModal()}catch(e){d.setAttribute('open','')}}
 const closeTh=()=>{const d=$('#themeDlg');try{d.close()}catch(e){d.removeAttribute('open')}};
 $('#themeBtn').onclick=openThemes;$('#thClose').onclick=closeTh;$('#thOk').onclick=closeTh;
 $('#introCheck').onchange=e=>store('bvc-intro',e.target.checked?'1':'0');
+$('#ssnCheck').onchange=e=>store('bvc-seasons',e.target.checked?'1':'0');
 applyTheme(store('bvc-theme')||'gold');
-function splashLeave(){const sp=$('#splash');if(!sp||sp.classList.contains('leave'))return;sp.classList.add('leave');setTimeout(()=>sp.remove(),950)}
+function splashLeave(){const sp=$('#splash');if(!sp||sp.classList.contains('leave'))return;sp.classList.add('leave');setTimeout(()=>{try{SSN&&SSN.stop()}catch(e){}sp.remove()},950)}
 $('#splash').addEventListener('click',splashLeave);
-if(store('bvc-intro')==='0'){$('#splash').remove()}else setTimeout(splashLeave,matchMedia('(prefers-reduced-motion: reduce)').matches?600:3400);
+let SSN=null;const ssnOn=()=>store('bvc-seasons')!=='0';
+/* Jahreszeit nur in den ersten 2 Wochen nach dem Wechsel (1. März, 1. Juni, 1. September, 1. Dezember) */
+const ssnKey=(d=new Date())=>[3,6,9,12].includes(d.getMonth()+1)&&d.getDate()<=14?Seasons.pick(d):null;
+if(store('bvc-intro')==='0'){$('#splash').remove()}else{try{const k=ssnKey();if(ssnOn()&&k)SSN=Seasons.mount($('#splash'),k,'start')}catch(e){}setTimeout(splashLeave,matchMedia('(prefers-reduced-motion: reduce)').matches?600:3400)}
 $('#quitBtn').onclick=async()=>{
   const done=Q.filter(q=>q.state==='done').length;
   $('#gHint').textContent=done===1?'Dein umgewandeltes Video ist fertig.':done>1?`Deine ${done} umgewandelten Videos sind fertig.`:'Bis zum nächsten Film.';
   try{pPause()}catch(e){} if(RUN.on)$('#bStop').click();
   const g=$('#goodbye');g.hidden=false;g.classList.remove('closing','done');$('#gBack').hidden=true;requestAnimationFrame(()=>g.classList.add('show'));
+  try{const k=ssnKey();if(ssnOn()&&k)Seasons.mount(g,k,'bye')}catch(e){}
   const red=matchMedia('(prefers-reduced-motion: reduce)').matches;
   await new Promise(r=>setTimeout(r,red?1200:3000));g.classList.add('closing');
   await new Promise(r=>setTimeout(r,red?300:1500));

@@ -1,0 +1,6 @@
+Butchies Video Converter AI – Jahreszeiten (freigegeben)
+
+Enthalten: seasons.css, seasons.js, demo.html sowie die Original-HTML als Referenz.
+Demo im Browser öffnen. Jahreszeit über das neue Auswahlfeld wählen.
+Keine Feiertage, keine Äste, keine Änderung am ursprünglichen Hintergrund.
+Die Integration ins Windows-Projekt ist noch nicht erfolgt.

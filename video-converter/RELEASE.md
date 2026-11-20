@@ -35,6 +35,10 @@ FFmpeg mit allen Codecs ist dabei (inklusive VMAF-Messung und HDR). WebView2 wir
 **Neu in 1.1.3**
 - Das Programm **merkt sich jetzt alles** bis zum nächsten Start: Design, Start-Animation an/aus, Auto/Manuell-Schalter, eigene Einstellungen (Codec, Zielgröße, Zeitplan …) und eigene Vorlagen. Bisher ging das beim Neustart verloren
 
+**Neu in 1.2.2**
+- **Jahreszeiten** beim Starten und Beenden (Blüten, Sonne, Herbstlaub, Schnee) – jeweils **2 Wochen ab dem Wechsel** (1. März, 1. Juni, 1. September, 1. Dezember), sonst die gewohnte Animation
+- Abschaltbar unter „Design“: „🍂 Jahreszeit beim Starten und Beenden zeigen“
+
 **Neu in 1.2.1**
 - Jede Datei in der Liste hat jetzt ein **✕** zum einzelnen Herausnehmen (mit „Rückgängig“). Läuft sie gerade oder wartet, fragt das Programm vorher und bricht nur diese eine Umwandlung ab. Die Originaldatei bleibt immer erhalten
 

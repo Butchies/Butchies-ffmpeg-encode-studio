@@ -1,0 +1,6 @@
+/* Zusatzebene: Originaldesign und Originalhintergrund bleiben unangetastet. */
+.ssn-layer{position:absolute;inset:0;z-index:1;overflow:hidden;pointer-events:none;contain:layout paint}
+.ssn-layer canvas{display:block;width:100%;height:100%}
+.ssn-caption{position:absolute;z-index:2;left:0;right:0;bottom:8%;text-align:center;pointer-events:none;color:var(--b);font:italic clamp(14px,2vw,24px) Georgia,serif;text-shadow:0 0 18px var(--glow)}
+.ssn-layer.ssn-light .ssn-caption{color:var(--a)}
+@media(prefers-reduced-motion:reduce){.ssn-layer canvas{opacity:.8}}
