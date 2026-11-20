@@ -1,0 +1,39 @@
+Butchies Video Converter AI
+===========================
+
+Wandelt Videos mit KI-Hilfe in H.264 oder H.265 um – mit Player, Vorher/Nachher-Vergleich
+und Ordner-Abgleich. Eigenständiges Programm (hat mit dem ffmpeg_encode Studio nichts zu tun,
+liegt nur im selben GitHub-Ordner).
+
+So geht's
+---------
+1. Programm starten (Startmenü oder Desktop: „Butchies Video Converter“).
+2. Videos oder ganze Ordner ins Fenster ziehen (oder „Dateien wählen“ / „Ordner wählen“).
+3. Zielgröße „von – bis“ eintragen. Alles andere steht auf „Auto“ – die KI entscheidet:
+   Codec, Auflösung, Tonspuren, Untertitel, HDR, Filmkorn/Zeichentrick.
+   Wer selbst einstellen will: beim Bereich auf „Manuell“ tippen – die Einstellungen fahren aus.
+4. Die KI misst automatisch die Qualität (VMAF) an 3 echten Probestücken.
+   Auf ein Probebild tippen = echtes Vorher/Nachher mit Schieberegler.
+5. „Umwandlung starten“ – Fortschritt in Prozent, KI-Monitor passt auf Größe und Szenen auf.
+6. Fertig: 📂 neben der Datei öffnet den Ordner.
+
+Player
+------
+Spielt alle Formate ab: was das Fenster nicht direkt kann (MKV, HEVC, HDR, DTS …),
+wandelt FFmpeg live beim Abspielen um. „KI-Schärfe“ schärft nur beim Anschauen.
+
+Ordner-Abgleich
+---------------
+Ordner A (z. B. Downloads) und Ordner B (z. B. NAS) hineinziehen – der Abgleich startet allein.
+Findet gleiche Filme am Namen, am Bild (auch bei anderem Namen) und per Prüfsumme.
+🗑 löschen (geschützte Ordner: nur in den Ordner „_Papierkorb“), ⚙ verarbeiten, ✏️ umbenennen.
+Freiwillig: TMDB-Schlüssel für deutsche Original-Titel.
+
+Handy-Nachricht
+---------------
+App „ntfy“ aufs Handy, das im Programm angezeigte Thema abonnieren, Haken setzen – fertig.
+
+Speicherort
+-----------
+Der Installer schlägt das Laufwerk mit dem meisten freien Speicher vor.
+Einstellungen: %APPDATA%\Butchies Video Converter\config.json
