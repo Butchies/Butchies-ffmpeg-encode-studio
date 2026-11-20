@@ -1630,22 +1630,43 @@ async function pollJobs() {
   } catch (_) {}
 }
 setInterval(pollJobs, 1500);
+const Q_STATE = { 'läuft': 'Läuft', 'wartet': 'Wartet', 'fertig': 'Fertig', 'fehler': 'Fehler', 'abgebrochen': 'Abgebrochen' };
 function drawQueue() {
-  const box = $('#qList'); box.textContent = '';
+  const box = $('#qList');
+  const sig = S.jobs.map(j => j.id + j.state).join('|');
+  if (sig && sig === box.dataset.sig) {        // nur Zahlen auffrischen – Knöpfe bleiben stehen (kein Flackern)
+    for (const j of S.jobs) {
+      const row = box.querySelector(`[data-id="${j.id}"]`); if (!row) continue;
+      const pct = j.state === 'fertig' ? 100 : Math.floor(j.percent || 0);
+      row.querySelector('.qi-pct').textContent = ['läuft', 'fertig'].includes(j.state) ? pct + ' %' : '';
+      row.querySelector('.bar i').style.width = pct + '%';
+      if (j.state === 'läuft') row.querySelector('.qi-foot small').textContent = [j.eta != null ? 'noch ' + mmss(j.eta) : 'wird berechnet …', j.speed ? 'Tempo ' + j.speed : ''].filter(Boolean).join(' · ');
+    }
+    return;
+  }
+  box.dataset.sig = sig; box.textContent = '';
   if (!S.jobs.length) { box.append(el('div', { class: 'empty' }, 'Noch keine Videos in der Warteschlange.')); return }
   for (const j of S.jobs) {
-    const f = fmtOf(j.settings.fmt);
-    box.append(el('div', { class: 'qi ' + j.state },
-      el('div', {}, el('b', { title: j.out || j.name }, j.name), el('small', {}, `${f[1]} · ${j.settings.fps} fps · ${j.state === 'läuft' ? Math.floor(j.percent) + ' %' : j.state}`)),
-      el('div', { class: 'qi-actions' },
-        ['läuft', 'wartet'].includes(j.state) ? el('button', { type: 'button', class: 'btn small', onclick: () => { $('#queueDlg').close(); openProgress(j.id) } }, 'Ansehen') : null,
-        ['läuft', 'wartet'].includes(j.state) ? el('button', { type: 'button', class: 'btn small danger', onclick: () => api('/api/cancel', { id: j.id }).then(pollJobs) }, 'Abbrechen') : null,
-        j.state === 'fertig' ? el('button', { type: 'button', class: 'btn small', onclick: () => api('/api/show', { path: j.out }) }, 'Zeigen') : null,
-        j.state === 'fehler' ? el('button', { type: 'button', class: 'btn small', onclick: () => { $('#queueDlg').close(); openProgress(j.id) } }, 'Details') : null),
-      el('div', { class: 'bar' }, el('i', { style: `width:${j.state === 'fertig' ? 100 : j.percent}%` }))));
+    const f = fmtOf(j.settings.fmt), run = j.state === 'läuft', live = run || j.state === 'wartet';
+    const pct = j.state === 'fertig' ? 100 : Math.floor(j.percent || 0);
+    const info = run ? [j.eta != null ? 'noch ' + mmss(j.eta) : 'wird berechnet …', j.speed ? 'Tempo ' + j.speed : ''].filter(Boolean).join(' · ')
+      : j.state === 'fertig' ? 'Bereit für YouTube' : j.state === 'fehler' ? (j.error || '').split('\n')[0].slice(0, 90) : j.state === 'wartet' ? 'Startet, sobald das vorige Video fertig ist' : '';
+    const open = () => { $('#queueDlg').close(); openProgress(j.id) };
+    box.append(el('div', { class: 'qi ' + j.state, 'data-id': j.id },
+      el('div', { class: 'qi-main' },
+        el('b', { title: j.out || j.name }, j.name.replace(/\.mp4$/i, '')),
+        el('div', { class: 'qi-meta' }, el('span', { class: 'qi-state' }, Q_STATE[j.state] || j.state), el('span', {}, `${f[1]} · ${j.settings.fps} fps`))),
+      el('div', { class: 'qi-pct' }, run || j.state === 'fertig' ? pct + ' %' : ''),
+      el('div', { class: 'bar' }, el('i', { style: `width:${pct}%` })),
+      el('div', { class: 'qi-foot' }, el('small', {}, info),
+        el('div', { class: 'qi-actions' },
+          run ? el('button', { type: 'button', class: 'btn tiny', onclick: open }, 'Ansehen') : null,
+          live ? el('button', { type: 'button', class: 'btn tiny danger', onclick: () => api('/api/cancel', { id: j.id }).then(pollJobs) }, 'Abbrechen') : null,
+          j.state === 'fertig' ? el('button', { type: 'button', class: 'btn tiny', onclick: () => api('/api/show', { path: j.out }) }, 'Im Ordner zeigen') : null,
+          j.state === 'fehler' ? el('button', { type: 'button', class: 'btn tiny', onclick: open }, 'Details') : null))));
   }
 }
-$('#queueBtn').onclick = () => { drawQueue(); $('#queueDlg').showModal(); pollJobs() };
+$('#queueBtn').onclick = () => { $('#qList').dataset.sig = ''; drawQueue(); $('#queueDlg').showModal(); pollJobs() };
 $('#qClear').onclick = () => api('/api/clear-done', {}).then(pollJobs);
 $('#copyCmd').onclick = async () => { try { await navigator.clipboard.writeText($('#cmdText').textContent); toast('✓ Befehl kopiert') } catch (_) { toast('Kopieren nicht möglich', true) } };
 

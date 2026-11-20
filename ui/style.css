@@ -298,13 +298,23 @@ dialog[open]{animation:dlg .3s ease}
 .pg-err{padding:12px 14px;border-radius:12px;background:color-mix(in srgb,var(--bad) 14%,transparent);border:1px solid color-mix(in srgb,var(--bad) 40%,transparent);font:12px/1.55 var(--fm);white-space:pre-wrap;max-height:180px;overflow:auto}
 .pg-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 .qlist{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto}
-.qi{padding:12px;border-radius:14px;background:var(--panel);border:1px solid var(--line);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center}
-.qi b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.qi small{color:var(--muted);font-size:12px}
+.qi{padding:14px 16px;border-radius:16px;background:var(--panel);border:1px solid var(--line);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;align-items:center}
+.qi.läuft{border-color:color-mix(in srgb,var(--a) 45%,var(--line));box-shadow:0 0 22px color-mix(in srgb,var(--a) 14%,transparent)}
+.qi-main{min-width:0}
+.qi b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qi-meta{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--muted);font-size:12px;white-space:nowrap}
+.qi-state{padding:2px 8px;border-radius:99px;font-size:11px;font-weight:800;color:var(--muted);background:var(--panel2)}
+.qi.läuft .qi-state{color:var(--on);background:linear-gradient(90deg,var(--a),var(--b))}
+.qi.fertig .qi-state{color:var(--ok);background:color-mix(in srgb,var(--ok) 15%,transparent)}
+.qi.fehler .qi-state{color:var(--bad);background:color-mix(in srgb,var(--bad) 15%,transparent)}
+.qi-pct{font:800 20px/1 var(--fb);color:var(--a);font-variant-numeric:tabular-nums lining-nums}
+.qi.fertig .qi-pct{color:var(--ok)}
 .qi .bar{grid-column:1/-1;height:6px;border-radius:9px;background:var(--panel2);overflow:hidden}
-.qi .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--a),var(--b))}
-.qi.fertig .bar i{background:var(--ok)}.qi.fehler .bar i{background:var(--bad)}
-.qi-actions{display:flex;gap:6px}
+.qi .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--a),var(--b));transition:width .6s}
+.qi.fertig .bar i{background:var(--ok)}.qi.fehler .bar i{background:var(--bad)}.qi.abgebrochen .bar i{background:var(--muted)}
+.qi-foot{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+.qi-foot small{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.qi-actions{display:flex;gap:6px;flex:0 0 auto}
 .empty{padding:20px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:14px}
 
 .dropveil{position:fixed;inset:10px;z-index:90;display:none;place-items:center;border-radius:24px;border:3px dashed var(--b);background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(6px);text-align:center;pointer-events:none}
@@ -641,3 +651,5 @@ body.full .grips{display:none}
 .winctl button.x:hover{opacity:1}
 .winctl svg{width:16px;height:16px;stroke-width:1.8}
 @media (max-width:1200px){.top-actions .lbl{display:none}.top-actions .btn{padding:0 12px}}
+
+#queueDlg{width:min(640px,calc(100vw - 24px))}

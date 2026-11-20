@@ -1,4 +1,4 @@
-**ffmpeg_encode Studio 1.6.3** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
+**ffmpeg_encode Studio 1.6.4** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
 
 **Installieren:** `ffmpeg_encode_Studio-Setup.exe` herunterladen und starten. Es werden keine Administratorrechte gebraucht.
 FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingerichtet.
@@ -9,6 +9,9 @@ FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingeric
 - Audio-Visualizer (Wellenform/Spektrum) in Design- oder eigener Farbe
 - Grafikkarte automatisch (NVIDIA NVENC, Intel Quick Sync, AMD AMF), sonst CPU – mit automatischem Rückfall
 - Fortschritt in Prozent, Warteschlange, 7 Designs und Start-/Abschieds-Animation der Butchies-Webseite
+
+**Neu in 1.6.4**
+- Warteschlange neu: langer Dateiname wird sauber gekürzt, Status-Schild (Läuft/Wartet/Fertig/Fehler), große Prozentzahl, Restzeit und Tempo, Knöpfe in eigener Zeile; zählt flüssig hoch ohne Flackern
 
 **Neu in 1.6.3**
 - Fensterknöpfe (Minimieren, Monitor, Vollbild, Maximieren, Schließen) sitzen jetzt direkt in der Kopfzeile – gleich hoch und im gleichen Stil wie die anderen Knöpfe; bei kleinen Fenstern rutscht nichts mehr darunter (die Knöpfe zeigen dann nur ihre Symbole)
