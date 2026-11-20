@@ -298,7 +298,7 @@ def build_layers(s, bw, bh, H, fps, rng):
     amt = s['fxAmount'] / 50.0
     size = 0.4 + s['fxSize'] / 50.0 * 0.6          # 0,4 … 1,6
     spd = 0.15 + s['fxSpeed'] / 50.0                # 0,17 … 2,15
-    mp = bw * bh / 1e6
+    mp = bw * bh / 1e6 / (u * u)            # Fläche in „1080p-Megapixeln“: gleiche Menge bei jeder Auflösung (auch Vorschau)
     layers, ops = [], []
 
     def vel(px_per_sec, ang):
