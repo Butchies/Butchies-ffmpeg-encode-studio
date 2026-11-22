@@ -1,4 +1,4 @@
-**ffmpeg_encode Studio 1.7.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
+**ffmpeg_encode Studio 1.8.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
 
 **Installieren:** `ffmpeg_encode_Studio-Setup.exe` herunterladen und starten. Es werden keine Administratorrechte gebraucht.
 FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingerichtet.
@@ -9,6 +9,16 @@ FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingeric
 - Audio-Visualizer (Wellenform/Spektrum) in Design- oder eigener Farbe
 - Grafikkarte automatisch (NVIDIA NVENC, Intel Quick Sync, AMD AMF), sonst CPU – mit automatischem Rückfall
 - Fortschritt in Prozent, Warteschlange, 7 Designs und Start-/Abschieds-Animation der Butchies-Webseite
+
+**Neu in 1.8.0 – KI-Video: echte Bewegung aus deinem Bild**
+- Neue Karte „🎬 KI-Video“: eine KI (Wan 2.2, offline auf deinem PC) erzeugt aus deinem Bild echte Bewegung – z. B. Haare wehen, Blinzeln, Tanzen, Wasser, Wolken, Licht
+- 12 fertige Bewegungen + eigene Beschreibung (Deutsch geht)
+- Nur die markierte Fläche bewegt sich, der Rest bleibt dein scharfes Original (Markieren → „🎬 KI-Video“)
+- Erst 3 Varianten der ersten Sekunden zum Auswählen, dann die volle Länge: 10 s, 30 s, 1 Min, 2 Min oder ganzer Song
+- Lange Videos: Stück für Stück aneinandergereiht, regelmäßig weich zurück zum Original (damit nichts „verläuft“), am Ende nahtlose Wiederholung
+- Zeitschätzung vorher (lernt das Tempo deines PCs), fertige Stücke bleiben gespeichert – nach Abbruch geht es weiter
+- Läuft über Vulkan auf AMD-, NVIDIA- und Intel-Grafikkarten; das KI-Paket (ca. 8 GB) wird nur auf Wunsch einmal geladen
+- Projekte speichern jetzt auch die KI-Video-Fläche mit; Fehler behoben: gemalte Effekt-Flächen gingen beim Öffnen eines Projekts verloren
 
 **Neu in 1.7.0 – die KI lernt mit**
 - **Beste Stelle lernt dich kennen:** merkt sich, welchen Vorschlag du nimmst (Refrain, Drop oder Emotional), wie deine Lieblingsstellen klingen und ob du Start/Ende danach noch verschiebst – dein Favorit kommt nach vorne (★ Dein Favorit) und der Start passt sich an

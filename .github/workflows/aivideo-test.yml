@@ -34,6 +34,23 @@ jobs:
           Invoke-WebRequest -UseBasicParsing 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip' -OutFile ff.zip
           Expand-Archive ff.zip -DestinationPath fftmp -Force
           $global:LASTEXITCODE = 0
+      - name: Modell-Zwischenspeicher
+        id: mcache
+        uses: actions/cache/restore@v4
+        with:
+          path: aitest/home/aivideo/models
+          key: wan22-ti2v5b-turbo-q4km-v1
+      - name: KI-Paket laden (wie beim Nutzer)
+        run: |
+          $cli = (Get-ChildItem sdcpp -Recurse -Filter sd-cli.exe | Select-Object -First 1).FullName
+          $ff = (Get-ChildItem fftmp -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName
+          python tools/aivideo_test.py $cli $ff aitest --download-only
+      - name: Modell zwischenspeichern
+        if: steps.mcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: aitest/home/aivideo/models
+          key: wan22-ti2v5b-turbo-q4km-v1
       - name: Echtes Modell testen
         run: |
           $cli = (Get-ChildItem sdcpp -Recurse -Filter sd-cli.exe | Select-Object -First 1).FullName

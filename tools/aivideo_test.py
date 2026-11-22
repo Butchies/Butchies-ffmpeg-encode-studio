@@ -40,6 +40,8 @@ say('Download:', A.dl['state'], A.dl['error'], 'in %d s' % (time.time() - t0))
 if not A.ready():
     raise SystemExit('Paket nicht bereit')
 say('Dateien:', {k: (v.name, round(v.stat().st_size / 1024 ** 3, 2)) for k, v in A.files().items()})
+if '--download-only' in sys.argv:
+    raise SystemExit(0)
 
 # 2) Testbild (Gesicht-ähnliche Formen, kräftige Farben)
 img = np.zeros((704, 1280, 3), np.uint8)
