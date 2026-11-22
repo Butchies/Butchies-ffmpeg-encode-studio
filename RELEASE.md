@@ -19,6 +19,12 @@ FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingeric
 - Zeitschätzung vorher (lernt das Tempo deines PCs), fertige Stücke bleiben gespeichert – nach Abbruch geht es weiter
 - Läuft über Vulkan auf AMD-, NVIDIA- und Intel-Grafikkarten; das KI-Paket (ca. 8 GB) wird nur auf Wunsch einmal geladen
 - Projekte speichern jetzt auch die KI-Video-Fläche mit; Fehler behoben: gemalte Effekt-Flächen gingen beim Öffnen eines Projekts verloren
+- **Eigenes KI-Video-Fenster für den 2. Monitor:** öffnet sich nur beim Klick auf „KI-Video“, großer Player rechts, alles andere bleibt im Hauptfenster wie gewohnt (bei Monitoren an verschiedenen Grafikkarten wie beim Video Converter gegen Ruckeln abgesichert)
+- **Bewerten & ändern:** Sterne, Stichworte (z. B. „Bewegung zu stark“, „Gesicht verzerrt“) und eigener Änderungswunsch → „Ändern & 3 neue Varianten“; die KI lernt aus den Bewertungen und gibt häufige Wünsche künftig automatisch mit (sichtbar unter „KI lernt“)
+- **KI-Upscaler auf Full HD:** eine zweite KI (Real-ESRGAN) rechnet das KI-Video scharf auf 1920 × 1080 hoch
+- Farben des KI-Videos werden automatisch ans Original angeglichen (kein Farbsprung, kein Wegdriften bei langen Videos)
+- **Neues Design „Blau-Weiß“** (klar & frisch)
+- **Installer neu:** Funktionsseite mit Bildern, wechselnde Bilder während der Installation, Kopfleiste im Programm-Look
 
 **Neu in 1.7.0 – die KI lernt mit**
 - **Beste Stelle lernt dich kennen:** merkt sich, welchen Vorschlag du nimmst (Refrain, Drop oder Emotional), wie deine Lieblingsstellen klingen und ob du Start/Ende danach noch verschiebst – dein Favorit kommt nach vorne (★ Dein Favorit) und der Start passt sich an

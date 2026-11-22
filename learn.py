@@ -242,7 +242,7 @@ class Learner:
             learned.append('strong')
         elif cnt['weak'] >= 2 and cnt['weak'] > cnt['strong']:
             learned.append('weak')
-        cmatch = 0.85 + (0.15 if cnt['color'] >= 2 else 0.0)
+        cmatch = 0.9 + (0.1 if cnt['color'] >= 2 else 0.0)
         per = {}
         for r in R:
             per.setdefault(r['motion'], []).append(r['stars'])
@@ -250,7 +250,7 @@ class Learner:
         good = [r for r in R if r['stars'] >= 4]
         return {'n': len(R), 'learned': learned, 'extra': [AI_TAGS[t][1] for t in learned if AI_TAGS[t][1]],
                 'cmatch': cmatch, 'scores': scores, 'good': len(good),
-                'learned_names': [AI_TAGS[t][0] for t in learned] + (['Farben stärker angleichen'] if cmatch > 0.9 else [])}
+                'learned_names': [AI_TAGS[t][0] for t in learned] + (['Farben stärker angleichen'] if cmatch > 0.95 else [])}
 
     @staticmethod
     def ai_fix(tags, text):

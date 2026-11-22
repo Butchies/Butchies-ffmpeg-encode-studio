@@ -76,20 +76,20 @@ def prompt_for(motion, text, extra=()):
     return ', '.join(parts)
 
 
-def color_match(frames, ref, strength=0.85):
-    """Farben jedes Bildes an das Original angleichen (Lab-Mittelwert/Streuung, gleitend geglättet) –
-    verhindert den Farbsprung am Anfang und dass die Farben über viele Stücke wegdriften."""
-    if cv2 is None or strength <= 0:
+def color_match(frames, ref, strength=0.9):
+    """Farben der KI-Bilder ans Original angleichen (Lab-Mittelwert/Streuung). Die Korrektur wird aus dem Durchschnitt
+    des ganzen Stücks berechnet und auf alle Bilder gleich angewendet – so gibt es keinen Farbsprung nach dem ersten Bild,
+    kein Flackern und kein Wegdriften der Farben bei langen Videos. Das erste Bild (= Startbild) bleibt unverändert."""
+    if cv2 is None or strength <= 0 or len(frames) < 2:
         return frames
-    r = cv2.cvtColor(ref, cv2.COLOR_BGR2LAB).astype(np.float32)
-    rm, rs = r.reshape(-1, 3).mean(0), r.reshape(-1, 3).std(0) + 1e-3
-    out, em, es = [], None, None
-    for f in frames:
-        lab = cv2.cvtColor(f, cv2.COLOR_BGR2LAB).astype(np.float32)
-        m, sd = lab.reshape(-1, 3).mean(0), lab.reshape(-1, 3).std(0) + 1e-3
-        em = m if em is None else 0.7 * em + 0.3 * m
-        es = sd if es is None else 0.7 * es + 0.3 * sd
-        fixed = (lab - em) / es * rs + rm
+    r = cv2.cvtColor(ref, cv2.COLOR_BGR2LAB).astype(np.float32).reshape(-1, 3)
+    rm, rs = r.mean(0), r.std(0) + 1e-3
+    labs = [cv2.cvtColor(f, cv2.COLOR_BGR2LAB).astype(np.float32) for f in frames]
+    st = np.array([[l.reshape(-1, 3).mean(0), l.reshape(-1, 3).std(0) + 1e-3] for l in labs[1:]])
+    m, sd = st[:, 0].mean(0), st[:, 1].mean(0)
+    out = [frames[0]]
+    for lab in labs[1:]:
+        fixed = (lab - m) / sd * rs + rm
         lab = lab * (1 - strength) + fixed * strength
         out.append(cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR))
     return out
@@ -349,7 +349,7 @@ class AIVideo:
         if r.returncode:
             raise RuntimeError('Stück konnte nicht gespeichert werden: ' + r.stderr.decode('utf-8', 'replace')[-200:])
 
-    def _segment(self, d, idx, init_png, prompt, seed, W, H, frames, job, p0, p1, quality, ref=None, cmatch=0.85):
+    def _segment(self, d, idx, init_png, prompt, seed, W, H, frames, job, p0, p1, quality, ref=None, cmatch=0.9):
         """Stück idx erzeugen (oder vom letzten Mal übernehmen). Rückgabe: Pfad letztes Bild."""
         seg = d / ('segment-%03d.mp4' % idx)
         last = d / ('segment-%03d-last.png' % idx)
@@ -455,7 +455,7 @@ class AIVideo:
             try:
                 W, H, frames = gen_size(o['quality'], o['vertical'])
                 prompt = prompt_for(o['motion'], o.get('text'), o.get('extra') or ())
-                cm = float(o.get('cmatch', 0.85))
+                cm = float(o.get('cmatch', 0.9))
                 d = self.job_dir(o['key'])
                 d.mkdir(parents=True, exist_ok=True)
                 mf = d / 'meta.json'

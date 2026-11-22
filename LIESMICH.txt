@@ -54,6 +54,9 @@ Karte „🎬 KI-Video“: Eine KI erzeugt aus deinem Bild echte Bewegung – of
 4. „3 Varianten erzeugen“, die schönste anklicken, dann „Volle Länge berechnen“ (10 s bis ganzer Song).
 Die Rechenzeit wird vorher geschätzt; fertige Stücke bleiben gespeichert – nach Abbruch geht es dort weiter.
 Das fertige KI-Video wird beim Umwandeln automatisch eingesetzt (ist der Song länger: nahtlose Wiederholung).
+Im Programmfenster öffnet die Kachel „KI-Video“ ein eigenes Fenster (z. B. für den 2. Monitor).
+Bewerten: Sterne + was nicht passt → „Ändern & 3 neue Varianten“. Die KI merkt sich deine Wünsche.
+KI-Upscaler: rechnet das KI-Video scharf auf Full HD hoch (Schalter in der KI-Video-Karte).
 
 Fenster
 -------

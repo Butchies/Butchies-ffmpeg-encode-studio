@@ -22,7 +22,7 @@ except Exception:  # noqa: BLE001
 
 APP_NAME = 'ffmpeg_encode Studio'
 APP_DIRNAME = 'ffmpeg_encode Studio'      # Ordnername für Einstellungen/Videos bleibt (deine Daten bleiben erhalten)
-VERSION = '1.7.0'
+VERSION = '1.8.0'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))

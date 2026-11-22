@@ -611,10 +611,6 @@ body>header.top{position:relative;z-index:50}
 .g-tag .ai-mark{font-weight:800}
 @media (prefers-reduced-motion:reduce){.ai-mark{animation:none}}
 /* KI-Video – nur Kachel „Demnächst“ */
-.fxtile.soon{position:relative;opacity:.62;border-style:dashed}
-.fxtile.soon:hover{opacity:.9}
-.fxtile.soon .fx-ic{font-size:20px;line-height:24px}
-.fxtile.soon em{position:absolute;top:-7px;right:-4px;font-style:normal;font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:99px;color:var(--on);background:linear-gradient(110deg,var(--a),var(--b))}
 .fx-tiles{grid-template-columns:repeat(11,minmax(0,1fr))}
 @media(max-width:1500px){.fx-tiles{grid-template-columns:repeat(6,minmax(0,1fr))}}
 /* Shorts-Helfer */

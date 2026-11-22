@@ -1049,7 +1049,7 @@ function renderFx() {
     info.effects.forEach(e => tb.append(el('button', { type: 'button', class: 'fxtile', 'data-id': e.id, title: e.name, 'aria-label': e.name, onclick: () => setFx(e.id) },
       el('span', { class: 'fx-ic', 'aria-hidden': 'true', html: `<svg viewBox="0 0 24 24">${FX_ICON[e.id] || ''}</svg>` }), el('span', {}, e.short))));
     tb.append(el('button', { type: 'button', class: 'fxtile ai-tile', title: 'KI-Video – echte Bewegung aus deinem Bild', 'aria-label': 'KI-Video öffnen', onclick: openAiCard },
-      el('span', { class: 'fx-ic', 'aria-hidden': 'true' }, '🎬'), el('span', {}, 'KI-Video'), el('em', {}, 'NEU')));
+      el('em', {}, 'NEU'), el('span', { class: 'fx-ic', 'aria-hidden': 'true' }, '🎬'), el('span', {}, 'KI-Video')));
   }
   $$('.fxtile').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === s.fx)));
   const cur = info.effects.find(e => e.id === s.fx) || info.effects[0];
@@ -1276,7 +1276,13 @@ function renderAi() {
   // Bewegungen
   const mb = $('#aiMotions');
   if (!mb.childElementCount) st.motions.forEach(([id, n]) => mb.append(el('button', { type: 'button', 'data-v': id, onclick: () => aiSet('aiMotion', id) }, n)));
-  $$('#aiMotions button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.aiMotion)));
+  const sc = (AI.info && AI.info.learned && AI.info.learned.scores) || {};
+  $$('#aiMotions button').forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.v === s.aiMotion));
+    const n = (st.motions.find(m => m[0] === b.dataset.v) || [])[1] || '';
+    b.textContent = n + (sc[b.dataset.v] ? ' · ' + String(sc[b.dataset.v]).replace('.', ',') + ' ★' : '');
+    b.title = sc[b.dataset.v] ? 'Deine Durchschnittsnote für diese Bewegung' : '';
+  });
   if (document.activeElement !== $('#aiDesc')) $('#aiDesc').value = s.aiText || '';
   $$('#aiWhere button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.aiArea || (b.dataset.v === 'full' && s.aiArea !== 'mask'))));
   $$('#aiQual button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.aiQual)));
@@ -2154,13 +2160,19 @@ async function drawLearn() {
     !st.ready ? el('div', { class: 'ln-meter' }, el('i', { style: `width:${Math.min(100, st.n / 3 * 100)}%` })) : null,
     st.ready ? el('div', { class: 'ln-acts' }, el('button', { type: 'button', class: 'btn small glow', onclick: () => { $('#learnDlg').close(); applyStyle() } }, 'Meinen Stil jetzt einstellen')) : null));
   if (LN.update === undefined) LN.update = await api('/api/update').catch(() => null);
+  const A = d.ai || { n: 0, learned_names: [], scores: {} };
+  const mname = id => ((AI.st && AI.st.motions) || []).find(m => m[0] === id)?.[1] || id;
+  box.append(lnCard('🎬 KI-Video', A.n ? 'ai' : '',
+    A.n ? el('p', {}, 'Aus ', el('b', {}, `${A.n} Bewertung${A.n === 1 ? '' : 'en'}`), ' gelernt' + (A.learned_names.length ? ' – gibt jetzt automatisch mit: ' : '.'), A.learned_names.length ? el('b', {}, A.learned_names.join(', ')) : '')
+      : el('p', {}, 'Noch nichts gelernt. Bewerte deine KI-Videos mit Sternen und sag, was anders werden soll – die KI passt sich an.'),
+    Object.keys(A.scores || {}).length ? el('p', {}, 'Deine Noten: ' + Object.entries(A.scores).map(([m, v]) => `${mname(m)} ${String(v).replace('.', ',')} ★`).join(' · ')) : null));
   const u = LN.update;
   box.append(lnCard('⬆️ Neue KI-Versionen', '',
     el('p', {}, u ? (u.newer ? `Neue Version ${u.latest} ist da (du hast ${u.current}).` : u.latest ? `Du hast die neueste Version (${u.current}).` : 'Keine Verbindung zu GitHub – wird beim nächsten Start erneut geprüft.') : 'Wird geprüft …'),
     u && u.newer ? el('div', { class: 'ln-acts' }, el('button', { type: 'button', class: 'btn small glow', onclick: () => api('/api/open-url', { url: u.url }) }, 'Jetzt herunterladen')) : null));
 }
 async function resetLearn(part) {
-  const what = { hl: 'die gelernte beste Stelle', words: 'die gelernten Songtext-Wörter und korrigierten Texte', style: 'deinen gelernten Stil' }[part] || 'alles Gelernte';
+  const what = { hl: 'die gelernte beste Stelle', words: 'die gelernten Songtext-Wörter und korrigierten Texte', style: 'deinen gelernten Stil', ai: 'die KI-Video-Bewertungen' }[part] || 'alles Gelernte';
   if (!await ask('Vergessen?', `Soll die KI ${what} vergessen? Das lässt sich nicht rückgängig machen.`, 'Vergessen')) { $('#learnDlg').showModal(); return }
   await api('/api/learn/reset', { part: part || 'all' }).catch(e => toast(e.message, true));
   toast('✓ Vergessen'); if (!$('#learnDlg').open) $('#learnDlg').showModal(); drawLearn();
