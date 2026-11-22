@@ -229,7 +229,7 @@
    <div id="aiMain" hidden>
     <div class="field"><span>Bewegung</span>
      <div class="ai-motions" id="aiMotions" role="group" aria-label="Bewegung"></div>
-     <input type="text" id="aiText" maxlength="300" placeholder="Eigene Beschreibung (optional, Deutsch geht) – z. B. „sie lächelt und dreht den Kopf zur Kamera“" autocomplete="off">
+     <input type="text" id="aiDesc" maxlength="300" placeholder="Eigene Beschreibung (optional, Deutsch geht) – z. B. „sie lächelt und dreht den Kopf zur Kamera“" autocomplete="off">
     </div>
     <div class="ai-grid">
      <div class="field"><span>Wo?</span>
@@ -239,6 +239,7 @@
      <div class="field"><span>Qualität</span>
       <div class="seg" id="aiQual" role="group" aria-label="Qualität"><button type="button" data-v="fast">Schnell</button><button type="button" data-v="good">Beste</button></div>
       <small class="mhint" id="aiQualHint"></small>
+      <label class="ai-up"><button type="button" class="switch" id="aiUpSw" role="switch" aria-checked="true" aria-label="KI-Upscaler"><i></i></button><span><b>KI-Upscaler auf Full HD</b><small id="aiUpHint">Rechnet das KI-Video mit einer zweiten KI scharf auf 1920 × 1080 hoch.</small></span></label>
      </div>
      <div class="field"><span>Länge</span>
       <div class="seg" id="aiLens" role="group" aria-label="Länge"><button type="button" data-v="10">10 s</button><button type="button" data-v="30">30 s</button><button type="button" data-v="60">1 Min</button><button type="button" data-v="120">2 Min</button><button type="button" data-v="0">Ganzer Song</button></div>
@@ -251,7 +252,17 @@
      <div class="ai-step"><b>2</b><div><button type="button" class="btn glow" id="aiFullBtn" disabled>Volle Länge berechnen</button><small id="aiFullHint">Zuerst eine Variante auswählen.</small></div></div>
      <div class="ai-prog" id="aiProg" hidden><div class="bar"><i id="aiBar"></i></div><div class="ai-prog-row"><small id="aiProgText"></small><button type="button" class="btn tiny danger" id="aiCancel">Abbrechen</button></div></div>
      <div class="ai-result" id="aiResult" hidden></div>
+     <div class="ai-fb" id="aiFb" hidden>
+      <div class="ai-fb-head"><b>Wie gefällt dir das?</b><small id="aiFbWhat"></small></div>
+      <div class="ai-stars" id="aiStars" role="radiogroup" aria-label="Bewertung"></div>
+      <div class="ai-tags" id="aiTags" role="group" aria-label="Was stimmt nicht?"></div>
+      <input type="text" id="aiFix" maxlength="200" placeholder="Was soll anders werden? (Deutsch) – z. B. „nur die Haare bewegen, Gesicht ruhig lassen“" autocomplete="off">
+      <div class="ai-fb-acts"><button type="button" class="btn small" id="aiRate">Nur bewerten</button><button type="button" class="btn small glow" id="aiRedo">Ändern &amp; 3 neue Varianten</button></div>
+      <small class="ai-learned" id="aiLearned"></small>
+     </div>
+     <div class="ai-fixbar" id="aiFixBar" hidden></div>
     </div>
+    <div class="ai-open" id="aiOpenRow" hidden><button type="button" class="btn glow" id="aiOpenWin">🎬 KI-Video-Studio öffnen</button><small>Öffnet sich als eigenes Fenster – am besten auf dem 2. Monitor.</small></div>
    </div>
   </div>
 
@@ -329,6 +340,13 @@
  </section>
 </main>
 
+<section class="ki-root" id="kiRoot" hidden>
+ <div class="ki-left" id="kiLeft"></div>
+ <div class="ki-right">
+  <div class="ki-player"><video id="kiVideo" loop muted playsinline controls></video><div class="ki-empty" id="kiEmpty"><span>🎬</span><b>Hier siehst du deine KI-Bewegung</b><small>Bewegung wählen → „3 Varianten erzeugen“</small></div></div>
+  <div class="ki-meta"><b id="kiWhat"></b><small id="kiInfo"></small></div>
+ </div>
+</section>
 <footer class="bottom">
  <span class="st"><i class="dot" id="ffDot"></i><span id="ffText">FFmpeg wird gesucht …</span></span>
  <span class="st" id="hwText"></span>

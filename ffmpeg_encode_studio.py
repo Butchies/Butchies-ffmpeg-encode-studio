@@ -561,6 +561,13 @@ def ai_key(img, s, fix=''):
                                s['aiText'] + ('|' + fix if fix else ''), bool(FORMATS[s['fmt']][3]))
 
 
+def ai_imgkey(img, s):
+    """Kennung nur für Bild + Zuschnitt + Hoch/Quer – passt ein fertiges KI-Video noch zum aktuellen Bild?"""
+    ai_key(img, s)
+    p = Path(img['path'])
+    return aivideo.AIVideo.key(('%s|%s' % (IMG_HASH[(str(p), p.stat().st_mtime)], s['fit'])).encode(), '', '', '', bool(FORMATS[s['fmt']][3]))
+
+
 def ai_length(s, audio):
     if s['aiLen']:
         return float(s['aiLen'])
@@ -1431,8 +1438,16 @@ class Handler(BaseHTTPRequestHandler):
                 fix = ','.join(sorted(fix_tags)) + ('|' + fix_text if fix_text else '')
                 key = ai_key(img, st, fix)
                 length = ai_length(st, STAGED.get(data.get('audio') or ''))
+                ikey = ai_imgkey(img, st)
                 if path == '/api/ai/info':
-                    return self.send_json(200, {'key': key, 'have': AIV.clips(key), 'length': length,
+                    clip_ok = True
+                    if st['aiClip']:
+                        try:
+                            m = json.loads((AIV.clip_path(st['aiClip']).parent.parent / 'meta.json').read_text('utf-8'))
+                            clip_ok = m.get('imgkey') in (None, ikey)
+                        except Exception:  # noqa: BLE001
+                            clip_ok = False
+                    return self.send_json(200, {'key': key, 'have': AIV.clips(key), 'length': length, 'clip_ok': clip_ok,
                                                 'estimate': AIV.estimate(st['aiQual'], length),
                                                 'estimate_variants': AIV.estimate(st['aiQual'], 1),
                                                 'learned': LEARN.ai_model(), 'upscaler': UPS.available()})
@@ -1443,7 +1458,7 @@ class Handler(BaseHTTPRequestHandler):
                         'key': key, 'quality': st['aiQual'], 'motion': st['aiMotion'], 'text': st['aiText'], 'fmt': st['fmt'],
                         'vertical': bool(FORMATS[st['fmt']][3]), 'seed': int(data.get('seed') or 11), 'length': length,
                         'extra': lm['extra'] + learn.Learner.ai_fix(fix_tags, fix_text), 'cmatch': lm['cmatch'],
-                        'up': st['aiUp'] and UPS.available()})
+                        'up': st['aiUp'] and UPS.available(), 'imgkey': ikey})
                 except RuntimeError as ex:
                     return self.send_json(400, {'error': str(ex)})
                 return self.send_json(200, {'id': jid, 'key': key})
@@ -1678,12 +1693,13 @@ def open_window(url):
 class WinFrame:
     """Verschiebt, vergrößert und maximiert das rahmenlose Fenster über die Windows-API (wie im Butchies Uploader)."""
 
-    def __init__(self):
+    def __init__(self, title=None):
         self.win = None
         self.hwnd = 0
         self.saved = None
         self.full = None
         self.busy = False
+        self.title = title or APP_NAME
 
     def _user32(self):
         import ctypes
@@ -1700,7 +1716,7 @@ class WinFrame:
             self.hwnd = int(self.win.native.Handle.ToInt64())
         except Exception:  # noqa: BLE001
             ctypes, wintypes, u = self._user32()
-            self.hwnd = u.FindWindowW(None, APP_NAME) or 0
+            self.hwnd = u.FindWindowW(None, self.title) or 0
         return self.hwnd
 
     def _rect(self):
@@ -1886,8 +1902,223 @@ class WinFrame:
         self.win.minimize()
 
     def close(self):
-        stop_all()
+        if self.title == APP_NAME:
+            stop_all()
+            ki_window_close()
         self.win.destroy()
+
+
+KI_TITLE = APP_NAME + ' – KI-Video'
+KIWIN = {'win': None, 'f': None}
+
+
+def monitor_adapters():
+    """Welche Grafikkarte jeden Monitor ansteuert (wie im Butchies Video Converter): [(x, y, w, h, 'Name'), …]."""
+    out = []
+    if os.name != 'nt':
+        return out
+    import ctypes
+    from ctypes import wintypes
+    u = ctypes.windll.user32
+
+    class MIX(ctypes.Structure):
+        _fields_ = [('cbSize', wintypes.DWORD), ('rcMonitor', wintypes.RECT), ('rcWork', wintypes.RECT), ('dwFlags', wintypes.DWORD),
+                    ('szDevice', wintypes.WCHAR * 32)]
+
+    class DD(ctypes.Structure):
+        _fields_ = [('cb', wintypes.DWORD), ('DeviceName', wintypes.WCHAR * 32), ('DeviceString', wintypes.WCHAR * 128),
+                    ('StateFlags', wintypes.DWORD), ('DeviceID', wintypes.WCHAR * 128), ('DeviceKey', wintypes.WCHAR * 128)]
+    names = {}
+    i = 0
+    while True:
+        d = DD()
+        d.cb = ctypes.sizeof(DD)
+        if not u.EnumDisplayDevicesW(None, i, ctypes.byref(d), 0):
+            break
+        names[d.DeviceName] = d.DeviceString
+        i += 1
+    u.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MIX)]
+    proc = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HANDLE, wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+
+    def cb(hmon, hdc, rect, data):
+        mi = MIX()
+        mi.cbSize = ctypes.sizeof(MIX)
+        u.GetMonitorInfoW(hmon, ctypes.byref(mi))
+        r = mi.rcMonitor
+        out.append((r.left, r.top, r.right - r.left, r.bottom - r.top, names.get(mi.szDevice, '?')))
+        return 1
+    u.EnumDisplayMonitors(None, None, proc(cb), 0)
+    return sorted(out)
+
+
+def webview_exes():
+    """Pfade von msedgewebview2.exe (zeichnet die Programmoberfläche)."""
+    out = []
+    if os.name != 'nt':
+        return out
+    import winreg
+    key = r'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+    for root, k in ((winreg.HKEY_LOCAL_MACHINE, key), (winreg.HKEY_CURRENT_USER, key.replace('WOW6432Node\\', ''))):
+        try:
+            with winreg.OpenKey(root, k) as h:
+                loc = winreg.QueryValueEx(h, 'location')[0]
+                pv = winreg.QueryValueEx(h, 'pv')[0]
+            exe = Path(loc) / pv / 'msedgewebview2.exe'
+            if exe.is_file():
+                out.append(str(exe))
+        except OSError:
+            pass
+    return out
+
+
+def two_monitor_gpu_fix():
+    """Wie im Video Converter (2.3.0): hängen die Monitore an verschiedenen Grafikkarten (z. B. 760M + externe RX 7600M XT),
+    zeichnet die Oberfläche auf der Prozessor-Grafik – sonst ruckelt/hängt ein Fenster auf dem 2. Monitor.
+    Betrifft nur die Darstellung; KI-Video und Umwandeln rechnen weiter auf der starken Karte."""
+    try:
+        if len({a[4] for a in monitor_adapters()}) < 2:
+            return False
+        import winreg
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\DirectX\UserGpuPreferences') as h:
+            for exe in webview_exes():
+                winreg.SetValueEx(h, exe, 0, winreg.REG_SZ, 'GpuPreference=1;')
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def ki_window_open(url, frame):
+    """Eigenes Fenster nur für das KI-Video (öffnet sich erst beim Klick auf „KI-Video“) – am liebsten auf dem 2. Monitor.
+    Getrennte Fenster statt eines Fensters über beide Monitore (Lösung aus dem Butchies Video Converter, 2.4.0)."""
+    import webview
+    rec = KIWIN
+    if os.name == 'nt':
+        two_monitor_gpu_fix()          # nur wenn die neue KI-Video-Funktion benutzt wird (wirkt ab dem nächsten Start)
+    if rec['win'] is not None:
+        try:
+            rec['win'].show()
+            rec['win'].restore()
+            return True
+        except Exception:  # noqa: BLE001
+            rec['win'] = None
+    mons = frame.monitors() if os.name == 'nt' else []
+    x = y = None
+    w, h = 1280, 860
+    if mons:
+        try:
+            mx, my, mw, mh = frame._rect()
+            cx, cy = mx + mw // 2, my + mh // 2
+            main_i = next((i for i, m in enumerate(mons) if m[0] <= cx < m[0] + m[2] and m[1] <= cy < m[1] + m[3]), 0)
+        except Exception:  # noqa: BLE001
+            main_i = 0
+        want = load_config().get('kimon')
+        if not isinstance(want, int) or not 0 <= want < len(mons):
+            want = next((i for i in range(len(mons)) if i != main_i), main_i)
+        m = mons[want]
+        w, h = min(w, m[2] - 60), min(h, m[3] - 80)
+        x, y = m[0] + (m[2] - w) // 2, m[1] + (m[3] - h) // 2
+    kf = WinFrame(KI_TITLE)
+
+    class KiApi:
+        def minimize(self):
+            kf.minimize()
+
+        def toggle_max(self):
+            return kf.toggle_max()
+
+        def is_max(self):
+            return kf.is_max()
+
+        def drag(self):
+            kf.drag()
+
+        def resize(self, edge):
+            kf.resize(str(edge))
+
+        def close(self):
+            ki_window_close()
+
+        def toggle_fullscreen(self):
+            try:
+                return kf.toggle_full()
+            except Exception:  # noqa: BLE001
+                return False
+
+        def is_full(self):
+            return bool(kf.full)
+
+        def fit_full(self):
+            try:
+                return kf.fit_full()
+            except Exception:  # noqa: BLE001
+                return False
+
+        def next_monitor(self):
+            try:
+                return kf.next_monitor()
+            except Exception:  # noqa: BLE001
+                return False
+
+        def monitor_count(self):
+            try:
+                return len(kf.monitors())
+            except Exception:  # noqa: BLE001
+                return 1
+
+        def show_main(self):
+            try:
+                frame.win.show()
+                frame.win.restore()
+            except Exception:  # noqa: BLE001
+                pass
+            return True
+
+    u = url.replace('/#', '/?ki=1#', 1)
+    win = webview.create_window(KI_TITLE, u, x=x, y=y, width=w, height=h, min_size=(900, 600), frameless=True, easy_drag=False,
+                                background_color='#0d0a05', js_api=KiApi(), text_select=True)
+    kf.win = win
+    rec.update(win=win, f=kf)
+
+    def shown(*a):
+        time.sleep(0.4)
+        try:
+            if not kf.is_max():
+                kf.toggle_max()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def closed(*a):
+        rec.update(win=None, f=None)
+    if os.name == 'nt':
+        win.events.shown += lambda *a: threading.Thread(target=shown, daemon=True).start()
+    win.events.closed += closed
+    return True
+
+
+def ki_window_close():
+    """KI-Fenster schließen und den Monitor merken (nächstes Mal wieder dort)."""
+    rec = KIWIN
+    kf, win = rec.get('f'), rec.get('win')
+    if not win:
+        return True
+    try:
+        if os.name == 'nt' and kf:
+            mons = kf.monitors()
+            x, y, w, h = kf._rect()
+            cx, cy = x + w // 2, y + h // 2
+            idx = next((i for i, m in enumerate(mons) if m[0] <= cx < m[0] + m[2] and m[1] <= cy < m[1] + m[3]), None)
+            if idx is not None:
+                conf = load_config()
+                conf['kimon'] = idx
+                save_config(conf)
+    except Exception:  # noqa: BLE001
+        pass
+    rec.update(win=None, f=None)
+    try:
+        win.destroy()
+    except Exception:  # noqa: BLE001
+        pass
+    return True
 
 
 def native_window(url):
@@ -1945,6 +2176,16 @@ def native_window(url):
                 return len(frame.monitors())
             except Exception:  # noqa: BLE001
                 return 1
+
+        def ki_open(self):
+            try:
+                return ki_window_open(url, frame)
+            except Exception as ex:  # noqa: BLE001
+                print('KI-Fenster:', ex, flush=True)
+                return False
+
+        def ki_close(self):
+            return ki_window_close()
 
         def pick_folder(self, start=''):
             try:

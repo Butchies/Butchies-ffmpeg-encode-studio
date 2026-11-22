@@ -157,7 +157,8 @@ class AIVideo:
             return 0.0
 
     def status(self):
-        return {'tool': bool(self.sd), 'ready': self.ready(), 'download': dict(self.dl), 'need_gb': self.need_gb(),
+        running = [self.view(j['id']) for j in self.jobs.values() if j['state'] in ('läuft', 'wartet')]
+        return {'tool': bool(self.sd), 'ready': self.ready(), 'download': dict(self.dl), 'need_gb': self.need_gb(), 'running': running,
                 'free_gb': self.free_gb(), 'devices': self.devices() if self.sd else [], 'speed': self.speeds(),
                 'motions': [[m[0], m[1]] for m in MOTIONS], 'qualities': QUALITY_NAMES, 'folder': str(self.models)}
 
@@ -467,7 +468,8 @@ class AIVideo:
                     o['extra'] = old['extra']            # gleiche Beschreibung wie bei den Varianten (Gelerntes kann sich inzwischen geändert haben)
                     prompt = prompt_for(o['motion'], o.get('text'), o['extra'])
                 mf.write_text(json.dumps({'motion': o['motion'], 'text': o.get('text', ''), 'quality': o['quality'], 'extra': o.get('extra') or [],
-                                          'vertical': o['vertical'], 'W': W, 'H': H, 'fmt': o.get('fmt'), 'prompt': prompt}), 'utf-8')
+                                          'vertical': o['vertical'], 'W': W, 'H': H, 'fmt': o.get('fmt'), 'prompt': prompt,
+                                          'imgkey': o.get('imgkey')}), 'utf-8')
                 init = self._prepare_init(still_png, d, W, H)
                 if job['kind'] == 'variants':
                     seeds = o.get('seeds') or [11, 222, 3333]

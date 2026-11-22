@@ -3,7 +3,8 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const TOKEN = (location.hash.slice(1) || sessionStorage.getItem('fes-token') || '');
-if (TOKEN) { sessionStorage.setItem('fes-token', TOKEN); history.replaceState(null, '', location.pathname) }
+const KIWIN = new URLSearchParams(location.search).get('ki') === '1';     // eigenes KI-Video-Fenster (2. Monitor)
+if (TOKEN) { sessionStorage.setItem('fes-token', TOKEN); history.replaceState(null, '', location.pathname + location.search) }
 
 // Designs der Butchies-Webseite: id, Name, Untertitel, Hintergrund, Farbe A, Farbe B, Layout/Schrift, Überschrift-Schrift
 const THEMES = [
@@ -1182,30 +1183,77 @@ function fxFrame(ts) {
 requestAnimationFrame(fxFrame);
 
 /* ---------- KI-Video (1.8.0): echte Bewegung aus dem Bild, offline ---------- */
-const AI = { st: null, info: null, infoKey: '', job: '', jobKind: '', timer: 0, seed: 0, poll: 0 };
+const AI = { st: null, info: null, infoKey: '', job: '', jobKind: '', timer: 0, seed: 0, poll: 0, fix: null, stars: 0, tags: [], view: '' };
+/* KI-Video-Fenster (2. Monitor): gleiche Seite mit ?ki=1, Abgleich mit dem Hauptfenster per BroadcastChannel */
+const KICH = 'BroadcastChannel' in window ? new BroadcastChannel('fes-ki') : null;
+const NATIVE_KI = () => !KIWIN && !!(window.pywebview && window.pywebview.api && window.pywebview.api.ki_open);
+let KI_RX = false;
+function aiPatch(p) {                    // KI-Einstellung ändern – im KI-Fenster ans Hauptfenster melden (das speichert)
+  Object.assign(S.settings, p);
+  if (KIWIN) { if (KICH) KICH.postMessage({ type: 'set', patch: p }); renderAi(); renderKiStage() } else changed('ai');
+}
+const kiSend = debounce(() => {
+  if (KIWIN || !KICH || !S.settings) return;
+  KICH.postMessage({ type: 'state', settings: S.settings, image: S.image ? { token: S.image.token, name: S.image.name } : null,
+    audio: S.audio ? { token: S.audio.token, name: S.audio.name } : null, theme: S.theme });
+}, 150);
+if (KICH) KICH.onmessage = e => {
+  const d = e.data || {};
+  if (!KIWIN) {
+    if (d.type === 'hello') kiSend();
+    else if (d.type === 'set') { Object.assign(S.settings, d.patch || {}); KI_RX = true; changed('ai'); KI_RX = false; aiInfo() }
+    else if (d.type === 'mark') { S.settings.ai = true; MK.target = 'ai'; MK.mode = 'mask'; foldToggle($('#markBar'), true); changed('ai'); $('#markBar').scrollIntoView({ behavior: 'smooth', block: 'center' }); toast('Male im Vorschaubild die Fläche, die sich bewegen soll (Umschalter „🎬 KI-Video“).') }
+  } else if (d.type === 'state') {
+    S.settings = Object.assign({}, d.settings); S.image = d.image; S.audio = d.audio;
+    if (d.theme && d.theme !== S.theme) applyTheme(d.theme);
+    renderAi(); renderKiStage(); aiInfo();
+  }
+};
 const dur = sec => { sec = Math.max(0, Math.round(sec)); if (sec < 90) return `${sec} s`; const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60); return h ? `${h} Std.${m ? ' ' + m + ' Min.' : ''}` : `${m} Min.` };
-function openAiCard() { const c = $('#aiCard'); foldToggle(c, true); c.scrollIntoView({ behavior: 'smooth', block: 'start' }); refreshAi() }
+function openAiCard() {
+  if (NATIVE_KI()) { window.pywebview.api.ki_open().then(ok => { if (!ok) openAiCardHere() }).catch(openAiCardHere); kiSend(); return }
+  openAiCardHere();
+}
+function openAiCardHere() { const c = $('#aiCard'); foldToggle(c, true); c.scrollIntoView({ behavior: 'smooth', block: 'start' }); refreshAi() }
+function kiBoot() {                     // Start im eigenen KI-Video-Fenster
+  document.body.classList.add('kiwin');
+  clearTimeout(splashTimer); const sp = $('#splash'); if (sp) sp.remove();
+  document.title = 'ffmpeg_encode Studio – KI-Video';
+  const card = $('#aiCard'); $('#kiLeft').append(card); foldToggle(card, true);
+  $('#kiRoot').hidden = false;
+  const b = $('.brand b'); if (b) b.innerHTML = '🎬 KI-Video <span class="ai-mark">AI</span>';
+  const back = el('button', { type: 'button', class: 'btn ghost', id: 'kiBack', title: 'Zum Hauptfenster', onclick: () => { try { window.pywebview.api.show_main() } catch (_) {} } }, el('span', { class: 'lbl' }, '↩ Hauptfenster'));
+  const nav = $('.top-actions'); nav.insertBefore(back, nav.firstChild);
+  if (KICH) KICH.postMessage({ type: 'hello' });
+  setTimeout(() => { if (KICH && !S.image) KICH.postMessage({ type: 'hello' }) }, 1500);
+}
 async function refreshAi() {
   try { AI.st = await api('/api/ai/status') } catch (_) { return }
+  const r = (AI.st.running || [])[0];
+  if (r && !AI.job) { AI.job = r.id; AI.jobKind = r.kind; $('#aiProg').hidden = false; aiPollJob() }   // läuft schon (z. B. Fenster neu geöffnet)
   renderAi(); aiInfo();
 }
-const aiInfo = debounce(async () => {
+async function aiInfoNow() {
   if (!S.image || !AI.st || !AI.st.ready) { AI.info = null; renderAi(); return }
   try {
-    AI.info = await api('/api/ai/info', { image: S.image.token, audio: S.audio && S.audio.token, settings: S.settings });
+    AI.info = await api('/api/ai/info', Object.assign({ image: S.image.token, audio: S.audio && S.audio.token, settings: S.settings }, aiFixArgs()));
     const s = S.settings;
-    if (s.aiClip && !s.aiClip.startsWith(AI.info.key + '/')) { s.aiClip = ''; saveSettings(); refreshCommand() }   // Bild/Bewegung geändert -> altes KI-Video passt nicht mehr
+    if (s.aiClip && AI.info.clip_ok === false) aiPatch({ aiClip: '' });   // anderes Bild/Format -> altes KI-Video passt nicht mehr
     if (AI.seed && !AI.info.have.variants.some(v => v.seed === AI.seed)) AI.seed = 0;
     if (!AI.seed && s.aiClip) AI.seed = +(s.aiClip.match(/seed-(\d+)/) || [])[1] || 0;
   } catch (_) { AI.info = null }
   renderAi();
-}, 400);
+}
+const aiInfo = debounce(aiInfoNow, 400);
+aiInfo.now = aiInfoNow;
 function renderAi() {
   const s = S.settings; if (!s) return;
   $('#aiSwitch').setAttribute('aria-checked', String(!!s.ai));
   const st = AI.st, pkg = $('#aiPkg'); pkg.textContent = '';
   const ready = !!(st && st.ready);
-  $('#aiMain').hidden = !ready;
+  const compact = NATIVE_KI();          // Hauptfenster mit eigenem KI-Fenster: nur Kurzfassung + Öffnen-Knopf
+  $('#aiMain').hidden = !ready || compact;
+  $('#aiOpenRow').hidden = !compact;
   if (st && !ready) {
     const d = st.download || {}, box = el('div', { class: 'box' });
     if (!st.tool) box.append(el('p', {}, 'Der KI-Motor fehlt in dieser Installation. Bitte das Programm mit dem neuesten Installer neu installieren.'));
@@ -1224,12 +1272,12 @@ function renderAi() {
     if (st.devices && st.devices.length) box.append(el('div', { class: 'dev' }, 'Rechnet mit: ' + aiDevText(st.devices)));
     pkg.append(box);
   }
-  if (!ready) return;
+  if (!ready || compact) { if (compact && s.aiClip) aiResultBox(s); else $('#aiResult').hidden = true; return }
   // Bewegungen
   const mb = $('#aiMotions');
   if (!mb.childElementCount) st.motions.forEach(([id, n]) => mb.append(el('button', { type: 'button', 'data-v': id, onclick: () => aiSet('aiMotion', id) }, n)));
   $$('#aiMotions button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.aiMotion)));
-  if (document.activeElement !== $('#aiText')) $('#aiText').value = s.aiText || '';
+  if (document.activeElement !== $('#aiDesc')) $('#aiDesc').value = s.aiText || '';
   $$('#aiWhere button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.aiArea || (b.dataset.v === 'full' && s.aiArea !== 'mask'))));
   $$('#aiQual button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.aiQual)));
   $$('#aiLens button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === s.aiLen)));
@@ -1247,7 +1295,7 @@ function renderAi() {
     const vid = el('video', { src: '/api/ai/video?p=' + encodeURIComponent(v.video), muted: true, loop: true, playsinline: true, preload: 'metadata' });
     vid.muted = true; vid.addEventListener('mouseenter', () => vid.play().catch(() => {})); vid.addEventListener('mouseleave', () => vid.pause());
     if (sel) setTimeout(() => vid.play().catch(() => {}), 50);
-    vb.append(el('div', { class: 'ai-var' + (sel ? ' sel' : ''), onclick: () => { AI.seed = v.seed; renderAi() } }, vid,
+    vb.append(el('div', { class: 'ai-var' + (sel ? ' sel' : ''), onclick: () => { AI.seed = v.seed; AI.view = v.video; renderAi() } }, vid,
       el('span', {}, sel ? '✓ Ausgewählt' : 'Diese nehmen', el('small', {}, '#' + v.seed))));
   }
   // Schritt 2: volle Länge
@@ -1258,7 +1306,13 @@ function renderAi() {
   $('#aiFullBtn').textContent = inUse ? '✓ Wird verwendet' : have ? 'Schon fertig – verwenden' : part ? 'Weiterrechnen (angefangen)' : 'Volle Länge berechnen';
   $('#aiFullHint').textContent = !AI.seed ? 'Zuerst eine Variante auswählen.' : inUse ? 'Andere Länge oder Variante wählen, um ein neues KI-Video zu berechnen.' : have ? 'Für diese Länge gibt es schon ein fertiges KI-Video.'
     : est ? `ca. ${dur(est.seconds)} · fertige Stücke bleiben gespeichert – du kannst abbrechen und später weitermachen.` : '';
-  // Ergebnis
+  // Upscaler
+  $('#aiUpSw').setAttribute('aria-checked', String(!!s.aiUp));
+  $('#aiUpSw').disabled = inf && !inf.upscaler;
+  $('#aiUpHint').textContent = inf && !inf.upscaler ? 'Nicht verfügbar in dieser Installation.' : 'Rechnet das fertige KI-Video mit einer zweiten KI scharf auf Full HD (1920 × 1080) hoch.';
+  aiResultBox(s); renderFb(); renderKiStage();
+}
+function aiResultBox(s) {
   const res = $('#aiResult');
   res.hidden = !s.aiClip; res.textContent = '';
   if (s.aiClip) {
@@ -1266,24 +1320,95 @@ function renderAi() {
     res.append(el('video', { src: '/api/ai/video?p=' + encodeURIComponent(s.aiClip), muted: true, loop: true, autoplay: true, playsinline: true }),
       el('div', { class: 'tx' }, el('b', {}, `✓ KI-Video fertig${sec ? ' (' + dur(+sec) + ')' : ''}`),
         el('small', {}, s.ai ? 'Wird beim Umwandeln eingesetzt' + (s.aiArea === 'mask' ? ' – nur in der markierten Fläche.' : '.') + ' Ist der Song länger, wird es nahtlos wiederholt.' : 'Schalter oben einschalten, damit es im Video verwendet wird.')),
-      el('button', { type: 'button', class: 'btn small', onclick: () => { s.aiClip = ''; changed('ai') } }, 'Nicht verwenden'));
+      el('button', { type: 'button', class: 'btn small', onclick: () => aiPatch({ aiClip: '' }) }, 'Nicht verwenden'));
     res.querySelector('video').muted = true;
+    res.querySelector('.tx b').textContent += /-hd\.mp4$/.test(s.aiClip) ? ' · Full HD' : '';
   }
+}
+/* ---------- Bewertung (Feedback) – die KI lernt daraus ---------- */
+const AI_TAGS = [['perfect', 'Perfekt'], ['strong', 'Bewegung zu stark'], ['weak', 'Bewegung zu schwach'], ['face', 'Gesicht verzerrt'], ['flicker', 'Flackert / unruhig'], ['blur', 'Unscharf'], ['color', 'Farben falsch']];
+function aiFixArgs() { return AI.fix ? { fix_tags: AI.fix.tags, fix_text: AI.fix.text } : {} }
+function aiCurrent() {                 // was gerade angezeigt/bewertet wird: fertiges KI-Video oder ausgewählte Variante
+  const s = S.settings, inf = AI.info;
+  if (AI.view && (AI.view === s.aiClip || (inf && inf.have.variants.some(v => v.video === AI.view)))) return AI.view;
+  if (s.aiClip) return s.aiClip;
+  const v = inf && inf.have.variants.find(x => x.seed === AI.seed);
+  return v ? v.video : '';
+}
+function renderFb() {
+  const cur = aiCurrent(), box = $('#aiFb');
+  box.hidden = !cur;
+  if (!cur) return;
+  $('#aiFbWhat').textContent = /ki-video/.test(cur) ? 'Fertiges KI-Video' : 'Variante #' + ((cur.match(/seed-(\d+)/) || [])[1] || '');
+  const st = $('#aiStars');
+  if (!st.childElementCount) for (let i = 1; i <= 5; i++) st.append(el('button', { type: 'button', role: 'radio', 'aria-label': i + ' Sterne', onclick: () => { AI.stars = i; renderFb() } }, '★'));
+  $$('#aiStars button').forEach((b, i) => { b.classList.toggle('on', i < AI.stars); b.setAttribute('aria-checked', String(i + 1 === AI.stars)) });
+  const tg = $('#aiTags');
+  if (!tg.childElementCount) AI_TAGS.forEach(([id, n]) => tg.append(el('button', { type: 'button', 'data-v': id, onclick: () => {
+    AI.tags = AI.tags.includes(id) ? AI.tags.filter(t => t !== id) : AI.tags.concat(id);
+    if (id === 'perfect') AI.tags = AI.tags.includes('perfect') ? ['perfect'] : AI.tags; else AI.tags = AI.tags.filter(t => t !== 'perfect');
+    if (id === 'strong') AI.tags = AI.tags.filter(t => t !== 'weak'); if (id === 'weak') AI.tags = AI.tags.filter(t => t !== 'strong');
+    renderFb();
+  } }, n)));
+  $$('#aiTags button').forEach(b => b.setAttribute('aria-pressed', String(AI.tags.includes(b.dataset.v))));
+  $('#aiRedo').disabled = !!AI.job;
+  const L = AI.info && AI.info.learned;
+  $('#aiLearned').textContent = L && L.n ? `🧠 Aus ${L.n} Bewertung${L.n === 1 ? '' : 'en'} gelernt` + (L.learned_names.length ? ' – gibt jetzt automatisch mit: ' + L.learned_names.join(', ') : '') : '🧠 Deine Bewertungen helfen der KI, beim nächsten Mal besser zu treffen.';
+  const fb = $('#aiFixBar'); fb.textContent = '';
+  fb.hidden = !AI.fix;
+  if (AI.fix) fb.append(el('span', {}, '✏️ Änderungswunsch aktiv: ' + [...AI.fix.tags.map(t => (AI_TAGS.find(x => x[0] === t) || [, t])[1]), AI.fix.text].filter(Boolean).join(' · ')),
+    el('button', { type: 'button', class: 'btn tiny', onclick: () => { AI.fix = null; AI.seed = 0; aiInfo() } }, 'Zurück zum Original-Wunsch'));
+}
+async function aiSendFeedback() {
+  if (!AI.stars) { toast('Bitte zuerst Sterne vergeben'); return false }
+  try {
+    const d = await api('/api/ai/feedback', { motion: S.settings.aiMotion, stars: AI.stars, tags: AI.tags, text: $('#aiFix').value, ref: aiCurrent() });
+    if (AI.info) AI.info.learned = d.learned;
+    toast('✓ Danke! Die KI merkt sich deine Bewertung');
+    return true;
+  } catch (e) { toast(e.message, true); return false }
+}
+$('#aiRate').onclick = async () => { if (await aiSendFeedback()) { AI.stars = 0; AI.tags = []; $('#aiFix').value = ''; renderFb() } };
+$('#aiRedo').onclick = async () => {
+  const text = $('#aiFix').value.trim(), tags = AI.tags.filter(t => t !== 'perfect');
+  if (!text && !tags.length) { toast('Wähle, was nicht passt, oder schreibe, was anders werden soll'); return }
+  if (AI.stars) await aiSendFeedback();
+  AI.fix = { tags, text }; AI.seed = 0; AI.stars = 0; AI.tags = []; $('#aiFix').value = '';
+  await aiInfo.now(); aiStart('variants');
+};
+$('#aiUpSw').onclick = () => aiPatch({ aiUp: !S.settings.aiUp });
+$('#aiOpenWin').onclick = () => { try { window.pywebview.api.ki_open() } catch (_) { openAiCard() } };
+/* großer Player im KI-Fenster */
+function renderKiStage() {
+  if (!KIWIN) return;
+  const cur = aiCurrent(), v = $('#kiVideo');
+  const src = cur ? '/api/ai/video?p=' + encodeURIComponent(cur) : '';
+  if (v.dataset.p !== src) { v.dataset.p = src; if (src) { v.src = src; v.play().catch(() => {}) } else v.removeAttribute('src') }
+  $('#kiEmpty').hidden = !!src;
+  const s = S.settings || {};
+  $('#kiWhat').textContent = !cur ? '' : /ki-video/.test(cur) ? '✓ Fertiges KI-Video' + (/-hd/.test(cur) ? ' · Full HD' : '') : 'Variante #' + ((cur.match(/seed-(\d+)/) || [])[1] || '');
+  $('#kiInfo').textContent = S.image ? 'Bild: ' + (S.image.name || '') + (s.aiArea === 'mask' ? ' · nur markierte Fläche' : ' · ganzes Bild') : 'Im Hauptfenster ein Bild hineinziehen.';
 }
 function aiDevText(devs) {
   const g = devs.filter(d => d.gpu);
   return g.length ? g.map(d => d.desc || d.name).join(' + ') : 'nur Prozessor (sehr langsam – keine passende Grafikkarte gefunden)';
 }
-function aiSet(k, v) { S.settings[k] = v; changed('ai'); aiInfo() }
-$('#aiSwitch').onclick = () => { S.settings.ai = !S.settings.ai; changed('ai'); if (S.settings.ai) { refreshAi(); foldToggle($('#aiCard'), true) } };
+function aiSet(k, v) { aiPatch({ [k]: v }); aiInfo() }
+$('#aiSwitch').onclick = () => { aiPatch({ ai: !S.settings.ai }); if (S.settings.ai) { refreshAi(); foldToggle($('#aiCard'), true) } };
 $$('#aiWhere button').forEach(b => b.onclick = () => {
-  S.settings.aiArea = b.dataset.v === 'mask' && S.settings.aiMask ? 'mask' : 'full';
+  const area = b.dataset.v === 'mask' && S.settings.aiMask ? 'mask' : 'full';
+  if (KIWIN) {
+    aiPatch({ aiArea: area, ai: true });
+    if (b.dataset.v === 'mask') { if (KICH) KICH.postMessage({ type: 'mark' }); try { window.pywebview.api.show_main() } catch (_) {} toast('Die Fläche malst du im Hauptfenster im Vorschaubild.') }
+    return;
+  }
+  S.settings.aiArea = area;
   if (b.dataset.v === 'mask') { S.settings.ai = true; MK.target = 'ai'; MK.mode = 'mask'; foldToggle($('#markBar'), true); $('#markBar').scrollIntoView({ behavior: 'smooth', block: 'center' }); if (!S.settings.aiMask) toast('Male jetzt im Vorschaubild die Fläche, die sich bewegen soll.') }
   changed('ai');
 });
 $$('#aiQual button').forEach(b => b.onclick = () => aiSet('aiQual', b.dataset.v));
 $$('#aiLens button').forEach(b => b.onclick = () => aiSet('aiLen', +b.dataset.v));
-$('#aiText').addEventListener('input', debounce(() => aiSet('aiText', $('#aiText').value), 700));
+$('#aiDesc').addEventListener('input', debounce(() => aiSet('aiText', $('#aiDesc').value), 700));
 async function aiDownload() {
   try { AI.st = await api('/api/ai/download', {}); renderAi(); aiPollStatus() } catch (e) { toast(e.message, true) }
 }
@@ -1298,7 +1423,7 @@ function aiPollStatus() {
 async function aiStart(kind) {
   if (!S.image) { toast('Zuerst ein Bild hineinziehen'); return }
   try {
-    const d = await api('/api/ai/start', { kind, image: S.image.token, audio: S.audio && S.audio.token, settings: S.settings, seed: AI.seed });
+    const d = await api('/api/ai/start', Object.assign({ kind, image: S.image.token, audio: S.audio && S.audio.token, settings: S.settings, seed: AI.seed }, aiFixArgs()));
     AI.job = d.id; AI.jobKind = kind; $('#aiProg').hidden = false; renderAi(); aiPollJob();
   } catch (e) { toast(e.message, true) }
 }
@@ -1306,7 +1431,7 @@ $('#aiVarBtn').onclick = () => aiStart('variants');
 $('#aiFullBtn').onclick = () => {
   const inf = AI.info, s = S.settings;
   const have = inf && inf.have.clips.find(c => c.seed === AI.seed && c.seconds === (s.aiLen || Math.round(inf.length)));
-  if (have) { s.aiClip = have.clip; s.ai = true; changed('ai'); toast('✓ KI-Video wird verwendet'); return }
+  if (have) { aiPatch({ aiClip: have.clip, ai: true }); toast('✓ KI-Video wird verwendet'); return }
   aiStart('full');
 };
 $('#aiCancel').onclick = () => { if (AI.job) api('/api/ai/cancel', { id: AI.job }).catch(() => {}) };
@@ -1320,7 +1445,7 @@ function aiPollJob() {
     AI.job = ''; $('#aiProg').hidden = true;
     if (j.state === 'fertig' && j.result) {
       if (AI.jobKind === 'variants') { toast('✓ 3 Varianten fertig – wähle die schönste aus'); if (!AI.seed) AI.seed = j.result.variants[0].seed }
-      else { S.settings.aiClip = j.result.clip; S.settings.ai = true; changed('ai'); toast('✓ KI-Video ist fertig und wird beim Umwandeln verwendet') }
+      else { aiPatch({ aiClip: j.result.clip, ai: true }); AI.view = j.result.clip; toast('✓ KI-Video ist fertig und wird beim Umwandeln verwendet') }
     } else if (j.state === 'fehler') ask('KI-Video', j.error || 'Unbekannter Fehler', 'OK');
     aiInfo(); refreshAi();
   }, 1500);
@@ -1488,7 +1613,7 @@ setupFolds();
 const saveSettings = debounce(() => api('/api/config', { settings: S.settings }).catch(() => {}), 600);
 function changed(what) {
   const s = S.settings;
-  renderFormats(); renderFits(); renderFps(); renderEnc(); renderSeg('#colorSeg', 'color'); renderViz(); renderFx(); renderShort(); renderAi(); foldSummaries();
+  renderFormats(); renderFits(); renderFps(); renderEnc(); renderSeg('#colorSeg', 'color'); renderViz(); renderFx(); renderShort(); renderAi(); foldSummaries(); kiSend();
   if (what === 'image' || what === 'fmt' || what === 'fit' || what === 'audio') aiInfo();
   $('#fadeIn').value = s.fadeIn; $('#fadeOut').value = s.fadeOut;
   $('#fiVal').textContent = secDe(s.fadeIn); $('#foVal').textContent = secDe(s.fadeOut);
@@ -1906,6 +2031,11 @@ function outroChime() {
   } catch (_) {}
 }
 async function quit() {
+  if (KIWIN) {                          // KI-Fenster: nur dieses Fenster schließen – eine laufende KI-Rechnung läuft weiter
+    if (AI.job) toast('Die KI rechnet im Hintergrund weiter.');
+    try { window.pywebview.api.close() } catch (_) { window.close() }
+    return;
+  }
   if (leaving) return;
   const busy = S.jobs.some(j => ['läuft', 'wartet'].includes(j.state));
   if (busy && !await ask('Programm beenden?', 'Es wird gerade ein Video konvertiert. Beim Beenden wird es abgebrochen.', 'Beenden')) return;
@@ -1958,6 +2088,7 @@ applyTheme(S.theme);
     if (S.settings.fxArea === 'mask') loadMaskFromServer(S.settings.fxMask, 'fx');
     if (S.settings.aiArea === 'mask') loadMaskFromServer(S.settings.aiMask, 'ai');
     renderFx(); refreshAi();
+    if (KIWIN) kiBoot();
     $('#gpuText').textContent = info.gpu ? info.gpu.text : '';
     $('#aiText').textContent = info.ai ? (info.ai.model ? '✨ ' : '') + info.ai.text : '';
     $('#verText').textContent = info.version;
