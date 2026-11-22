@@ -90,8 +90,8 @@ def plan(length_s, frames):
 
 class AIVideo:
     def __init__(self, home, app_dir, base_dir, ffmpeg, no_window=0):
-        self.dir = Path(home) / 'aivideo'
-        self.models = Path(os.environ.get('BES_AIMODELS') or (self.dir / 'models'))
+        self.dir = Path(home).resolve() / 'aivideo'
+        self.models = Path(os.environ.get('BES_AIMODELS') or (self.dir / 'models')).resolve()
         self.jobs_dir = self.dir / 'jobs'
         self.ffmpeg = ffmpeg
         self.nw = no_window
@@ -259,7 +259,9 @@ class AIVideo:
 
     def _run_sd(self, init_png, out_dir, prompt, seed, W, H, frames, job, p0, p1):
         """Ein Stück erzeugen -> PNG-Bilder in out_dir. Fortschritt p0…p1 (%)."""
-        f = self.files()
+        f = {k: v.resolve() for k, v in self.files().items()}
+        out_dir = Path(out_dir).resolve()
+        init_png = Path(init_png).resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         for old in out_dir.glob('f_*.png'):
             old.unlink()
