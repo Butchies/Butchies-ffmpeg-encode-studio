@@ -133,6 +133,8 @@ def find_tool(name):
 
 FFMPEG = find_tool('ffmpeg')
 AIV = aivideo.AIVideo(HOME, APP_DIR, BASE, FFMPEG, NO_WINDOW)     # KI-Video (freiwilliges Zusatz-Paket)
+import atexit
+atexit.register(AIV.shutdown)
 FFPROBE = find_tool('ffprobe')
 
 
@@ -846,12 +848,14 @@ def cancel_job(jid):
 
 
 def busy():
-    return any(j['state'] in ('läuft', 'wartet') for j in JOBS.values())
+    return any(j['state'] in ('läuft', 'wartet') for j in JOBS.values()) or \
+        any(j['state'] in ('läuft', 'wartet') for j in AIV.jobs.values())
 
 
 def stop_all():
     for jid in list(JOBS):
         cancel_job(jid)
+    AIV.shutdown()
 
 
 def show_in_folder(path):
@@ -1583,7 +1587,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/quit':
                 stop_all()
                 if not NATIVE[0]:
-                    threading.Timer(0.6, lambda: os._exit(0)).start()
+                    threading.Timer(0.6, lambda: (AIV.shutdown(), os._exit(0))).start()
                 return self.send_json(200, {'ok': True})
             if path == '/api/encode':
                 conf = load_config()

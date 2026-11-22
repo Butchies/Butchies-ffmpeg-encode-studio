@@ -60,7 +60,7 @@ cv2.imwrite(str(still), img)
 aivideo.QUALITIES['test'] = (256, 160, 9, 120)
 aivideo.ANCHOR = 2
 aivideo.XFADE = 3
-opts = {'key': 'test000000000000', 'quality': 'test', 'motion': 'hair', 'text': 'sanfte Bewegung', 'vertical': False,
+opts = {'key': '0123456789abcdef', 'quality': 'test', 'motion': 'hair', 'text': 'sanfte Bewegung', 'vertical': False,
         'fmt': 'yt1080', 'seed': 11, 'length': 1.0}
 
 

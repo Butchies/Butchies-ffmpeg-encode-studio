@@ -365,6 +365,17 @@ class AIVideo:
                 except OSError:
                     pass
 
+    def shutdown(self):
+        """Beim Beenden des Programms laufende KI-Rechnungen stoppen (fertige Stücke bleiben gespeichert)."""
+        for j in self.jobs.values():
+            j['cancel'] = True
+            p = j.get('proc')
+            if p:
+                try:
+                    p.kill()
+                except OSError:
+                    pass
+
     def view(self, jid):
         j = self.jobs.get(jid)
         if not j:
@@ -424,7 +435,7 @@ class AIVideo:
                         left = (len(segs) - n - 1) * (sum(t_seg) / len(t_seg))
                         job['eta'] = int(left)
                 job['note'] = 'Stücke werden zusammengesetzt …'
-                clip = vd / ('ki-video-%ds.mp4' % int(float(o['length'])))
+                clip = vd / ('ki-video-%ds.mp4' % int(round(float(o['length']))))
                 self.assemble(vd, segs, init, clip, W, H)
                 job.update(state='fertig', percent=100, note='', eta=0,
                            result={'clip': clip.relative_to(self.jobs_dir).as_posix(), 'seconds': self.duration(clip), 'key': o['key'], 'seed': sd})
