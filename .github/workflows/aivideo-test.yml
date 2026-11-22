@@ -11,6 +11,9 @@ on:
       - 'tools/aivideo_test.py'
       - '.github/workflows/aivideo-test.yml'
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: windows-latest
@@ -55,7 +58,19 @@ jobs:
         run: |
           $cli = (Get-ChildItem sdcpp -Recurse -Filter sd-cli.exe | Select-Object -First 1).FullName
           $ff = (Get-ChildItem fftmp -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName
-          python tools/aivideo_test.py $cli $ff aitest
+          python tools/aivideo_test.py $cli $ff aitest --quality
+      - name: Bilder zum Anschauen in Zweig ki-video-test legen
+        if: always()
+        run: |
+          git config user.name "Claude"; git config user.email "noreply@anthropic.com"
+          git checkout --orphan ki-video-test
+          git rm -rf --cached . | Out-Null
+          New-Item -ItemType Directory -Force kitest | Out-Null
+          Copy-Item aitest\*.png, aitest\*.txt kitest -ErrorAction SilentlyContinue
+          git add -f kitest
+          git commit -m "KI-Video-Testbilder $env:GITHUB_RUN_ID" | Out-Null
+          git push -f origin HEAD:ki-video-test
+          $global:LASTEXITCODE = 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:

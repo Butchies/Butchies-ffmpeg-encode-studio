@@ -80,6 +80,11 @@ if v['state'] != 'fertig':
     for lg in (home / 'aivideo' / 'jobs').rglob('sd.log'):
         say(lg.read_text('utf-8', 'replace')[-3000:])
     raise SystemExit('Variante fehlgeschlagen')
+for lg in (home / 'aivideo' / 'jobs').rglob('segment-000.log'):
+    say('--- sd-cli Protokoll (Auszug) ---')
+    for ln in lg.read_text('utf-8', 'replace').replace('\r', '\n').splitlines():
+        if any(w in ln.lower() for w in ('loaded', 'load', 'sampling', 'completed', 'decode', 'backend', 'vulkan', 'cpu', 'took', 'time', 'mb')) and len(ln) < 300:
+            say('   ', ln.strip())
 # 3 Stücke: 0 (vorhanden), 1 (angehängt), 2 (Rückkehr zum Original mit Überblendung)
 segs = aivideo.plan(1.0, 9)
 opts['length'] = (9 + 8 + 6) / aivideo.GEN_FPS
@@ -105,6 +110,16 @@ cv2.imwrite(str(out / 'bilder.png'), cv2.cvtColor(sheet, cv2.COLOR_RGB2BGR))
 for p in (home / 'aivideo' / 'jobs').rglob('*.mp4'):
     (out / ('video-' + p.parent.name + '-' + p.name)).write_bytes(p.read_bytes())
 (out / 'ergebnis.txt').write_text('\n'.join(log), 'utf-8')
+# Qualitätsblick in echter Größe (832 × 480, kurz): einzelne Bilder fürs Auge
+if '--quality' in sys.argv:
+    aivideo.QUALITIES['q'] = (832, 480, 17, 900)
+    t0 = time.time()
+    v = wait(A.start('variants', still, dict(opts, key='fedcba9876543210', quality='q', seeds=[7])))
+    say('Qualitätsblick 832x480:', v['state'], v['error'], 'in %d s' % (time.time() - t0))
+    if v['state'] == 'fertig':
+        fr = list(A._frames(A.jobs_dir / 'fedcba9876543210' / 'seed-7' / 'segment-000.mp4', 832, 480))
+        pick = [fr[i] for i in (0, len(fr) // 3, 2 * len(fr) // 3, len(fr) - 1)]
+        cv2.imwrite(str(out / 'qualitaet.png'), cv2.cvtColor(np.vstack([np.hstack(pick[:2]), np.hstack(pick[2:])]), cv2.COLOR_RGB2BGR))
 ok = corr > 0.5 and motion > 0.2 and flat > 3
 say('ERGEBNIS:', 'OK' if ok else 'AUFFÄLLIG')
 sys.exit(0 if ok else 2)
