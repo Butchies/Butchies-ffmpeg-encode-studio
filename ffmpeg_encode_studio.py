@@ -13,6 +13,7 @@ import fx
 import highlight
 import lyrics
 import learn
+import aivideo
 try:
     import mark          # braucht numpy + OpenCV (+ onnxruntime für die KI)
 except Exception:  # noqa: BLE001
@@ -91,7 +92,11 @@ TRANS_IDS = {t[1] for t in TRANSITIONS} | {'none'}
 
 DEFAULTS = {'fmt': 'yt4k', 'fps': 30, 'fadeIn': 2.0, 'fadeOut': 3.0, 'color': 'black', 'target': 'av', 'fit': 'blur',
             'enc': 'auto', 'quality': '18', 'start': '0:00', 'end': '',
-            'transIn': 'fade', 'transOut': 'fade', 'shortLen': 60, 'shortLyrics': False}
+            'transIn': 'fade', 'transOut': 'fade', 'shortLen': 60, 'shortLyrics': False,
+            # KI-Video (1.8.0)
+            'ai': False, 'aiClip': '', 'aiArea': 'full', 'aiMask': '', 'aiFeather': 1.5, 'aiMotion': 'hair', 'aiText': '',
+            'aiLen': 30, 'aiQual': 'fast'}
+AI_LENS = (10, 30, 60, 120, 0)      # Sekunden; 0 = ganzer Song
 DEFAULTS.update(viz.DEFAULTS)
 DEFAULTS.update(fx.DEFAULTS)
 
@@ -127,6 +132,7 @@ def find_tool(name):
 
 
 FFMPEG = find_tool('ffmpeg')
+AIV = aivideo.AIVideo(HOME, APP_DIR, BASE, FFMPEG, NO_WINDOW)     # KI-Video (freiwilliges Zusatz-Paket)
 FFPROBE = find_tool('ffprobe')
 
 
@@ -292,6 +298,30 @@ def clean_settings(s):
     if out['shortLen'] not in highlight.LENGTHS:
         out['shortLen'] = 60
     out['shortLyrics'] = bool(out['shortLyrics'])
+    # KI-Video
+    out['ai'] = bool(out['ai'])
+    out['aiClip'] = str(out['aiClip'] or '') if AIV.clip_path(out['aiClip']) else ''
+    if out['aiArea'] not in ('full', 'mask'):
+        out['aiArea'] = 'full'
+    if not isinstance(out['aiMask'], str) or out['aiMask'] not in MASKS:
+        out['aiMask'] = ''
+    if out['aiArea'] == 'mask' and not out['aiMask']:
+        out['aiArea'] = 'full'
+    try:
+        out['aiFeather'] = min(max(float(out['aiFeather']), 0.0), 6.0)
+    except (TypeError, ValueError):
+        out['aiFeather'] = 1.5
+    if out['aiMotion'] not in aivideo.MOTION_IDS:
+        out['aiMotion'] = 'hair'
+    out['aiText'] = re.sub(r'\s+', ' ', str(out['aiText'] or ''))[:300]
+    try:
+        out['aiLen'] = int(out['aiLen'])
+    except (TypeError, ValueError):
+        out['aiLen'] = 30
+    if out['aiLen'] not in AI_LENS:
+        out['aiLen'] = 30
+    if out['aiQual'] not in aivideo.QUALITIES:
+        out['aiQual'] = 'fast'
     viz.clean(s, out)
     fx.clean(s, out)
     # Markierungen aus einer früheren Sitzung (Maske nicht mehr vorhanden) zurücksetzen
@@ -421,8 +451,15 @@ def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fas
     vid = '[0:v]format=yuv420p,loop=loop=-1:size=1:start=0,fps=%d,setpts=N/%d/TB' % (fps, fps)
     extra_in, extra = prepare_mark(s, w, h, dur, mark_dir, tag) if s['viz'] else ([], {})
     fx_in = []
+    fxinfo = None
     if fx.active(s) and do_v:
         fx_in, fxinfo = fx.prepare(s, w, h, fps, dur, mark_dir, tag, still_png, 2 + len(extra_in), MASKS, DEPTH, mark)
+    ai_in = []
+    if s.get('ai') and do_v:
+        ai_in, vid, ai_note = ai_graph(s, w, h, fps, vid, parts, 2 + len(extra_in) + len(fx_in), mark_dir, tag)
+        if ai_note:
+            fx_notes.append(ai_note)
+    if fxinfo is not None:
         fparts, vid = fx.graph(s, w, h, fps, dur, fxinfo, vid, cmdfile)
         parts.extend(fparts)
         if fxinfo.get('depth_method') == 'einfach':
@@ -455,7 +492,7 @@ def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fas
         venc = ['-c:v', 'h264_amf', '-quality', 'quality', '-rc', 'cqp', '-qp_i', str(q + 2), '-qp_p', str(q + 4)]
     else:
         venc = ['-c:v', 'libx264', '-preset', 'ultrafast' if fast else preset, '-crf', str(26 if fast else q), '-profile:v', 'high']
-        if not s['viz'] and not fx.active(s):
+        if not s['viz'] and not fx.active(s) and not s.get('ai'):
             venc += ['-tune', 'stillimage']
     venc += ['-g', str(gop), '-bf', '2', '-pix_fmt', 'yuv420p', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709']
     if s['enc'] == 'x264':
@@ -467,11 +504,74 @@ def encode_command(still_png, audio_path, out_path, s, audio_dur, scale=1.0, fas
     args += ['-t', num(dur), '-i', str(audio_path)]
     for f in extra_in + fx_in:
         args += ['-i', str(f)]
+    for f in ai_in:
+        args += (['-stream_loop', '-1'] if str(f).endswith('.mp4') else []) + ['-i', str(f)]
     args += ['-filter_complex', graph, '-map', '[v]', '-map', '[aout]']
     args += venc + ['-r', str(fps), '-c:a', 'aac', '-b:a', '384k', '-ac', '2', '-t', num(dur), '-movflags', '+faststart',
                     '-metadata', 'encoder=%s %s' % (APP_NAME, VERSION), str(out_path)]
     return args, {'encoder': s['enc'], 'encoder_name': ENCODERS[s['enc']][1], 'start': start, 'duration': dur, 'fadeIn': fi, 'fadeOut': fo, 'notes': notes + fx_notes, 'width': w, 'height': h,
                   'format': name, 'vertical': vertical}
+
+
+def ai_graph(s, w, h, fps, vid, parts, idx, mark_dir, tag):
+    """KI-Video einsetzen: ganzes Bild ersetzen oder nur in der markierten Fläche (Rest bleibt das scharfe Original)."""
+    clip = AIV.clip_path(s.get('aiClip'))
+    if not clip:
+        return [], vid, 'KI-Video: noch kein fertiges KI-Video ausgewählt – das Bild bleibt unbewegt.'
+    try:
+        meta = json.loads((clip.parent.parent / 'meta.json').read_text('utf-8'))
+    except Exception:  # noqa: BLE001
+        meta = {}
+    if 'vertical' in meta and bool(meta['vertical']) != bool(FORMATS[s['fmt']][3]):
+        return [], vid, 'KI-Video: passt nicht zum Hoch-/Querformat – bitte für dieses Format neu erzeugen.'
+    files = [str(clip)]
+    ai = '[%d:v]fps=%d,scale=%d:%d:flags=bicubic,setsar=1' % (idx, fps, w, h)
+    mp = None
+    if mark and s['aiArea'] == 'mask' and MASKS.get(s['aiMask']) and Path(MASKS[s['aiMask']]).is_file():
+        mp = Path(mark_dir or STAGE) / ('ki-maske-%s.png' % tag)
+        mark.mask_crop(MASKS[s['aiMask']], w, h, 0, 0, w, h, str(mp), s['aiFeather'])
+    if not mp:
+        parts.append(ai + ',format=yuv420p[aio]')
+        return files, '[aio]null', ''
+    files.append(str(mp))
+    parts.append(ai + ',format=gbrp[aiv]')
+    parts.append('%s,format=gbrp[aib]' % vid)
+    parts.append('[%d:v]format=gray,scale=%d:%d,format=gbrp,loop=loop=-1:size=1,fps=%d[aim]' % (idx + 1, w, h, fps))
+    parts.append('[aib][aiv][aim]maskedmerge,format=yuv420p[aio]')
+    return files, '[aio]null', ''
+
+
+IMG_HASH = {}
+
+
+def ai_key(img, s):
+    """Kennung für Bild + Zuschnitt + Format + Bewegung (gleiche Kennung = vorhandene Stücke wiederverwenden)."""
+    p = Path(img['path'])
+    k = (str(p), p.stat().st_mtime)
+    if k not in IMG_HASH:
+        import hashlib
+        IMG_HASH[k] = hashlib.sha1(p.read_bytes()).hexdigest()
+    return aivideo.AIVideo.key(('%s|%s' % (IMG_HASH[k], s['fit'])).encode(), s['aiQual'], s['aiMotion'], s['aiText'],
+                               bool(FORMATS[s['fmt']][3]))
+
+
+def ai_length(s, audio):
+    if s['aiLen']:
+        return float(s['aiLen'])
+    _, dur, *_ = timing(s, (audio or {}).get('info', {}).get('duration') if audio else None)
+    return float(dur or 60)
+
+
+def ai_still(img, s):
+    """Bild im Zielformat (mit Zuschnitt) in ausreichender Größe für die KI."""
+    _, W, H, vertical = FORMATS[s['fmt']]
+    gw, gh, _ = aivideo.gen_size(s['aiQual'], vertical)
+    k = min(1.0, max(gw / W, gh / H) * 1.05)
+    out = STAGE / ('ki-start-%s.png' % secrets.token_hex(4))
+    r = run(still_command(img['path'], out, s, k), timeout=120)
+    if r.returncode or not out.is_file():
+        raise RuntimeError('Bild konnte nicht vorbereitet werden')
+    return out
 
 
 def quote(a):
@@ -1029,6 +1129,9 @@ def save_project(name, settings, audio_tok, image_tok):
         mp = MASKS.get(meta['settings'].get('fxMask') or '')
         if meta['settings'].get('fxArea') == 'mask' and mp and Path(mp).is_file():
             z.write(mp, 'effekt-maske.png')
+        mp = MASKS.get(meta['settings'].get('aiMask') or '')
+        if meta['settings'].get('aiArea') == 'mask' and mp and Path(mp).is_file():
+            z.write(mp, 'ki-maske.png')
     tmp.replace(path)
     return path
 
@@ -1044,8 +1147,8 @@ def open_project(path):
             meta = json.loads(z.read('projekt.json').decode('utf-8'))
         except (KeyError, ValueError):
             raise ValueError('In der Projektdatei fehlen die Einstellungen.')
-        out = {'settings': clean_settings(meta.get('settings')), 'name': Path(path).stem}
-        for fn, key in (('maske.png', 'vizMask'), ('effekt-maske.png', 'fxMask')):
+        out = {'settings': dict(meta.get('settings') or {}), 'name': Path(path).stem}
+        for fn, key in (('maske.png', 'vizMask'), ('effekt-maske.png', 'fxMask'), ('ki-maske.png', 'aiMask')):
             if fn in z.namelist():
                 tok = secrets.token_hex(8)
                 dest = STAGE / ('mask-%s.png' % tok)
@@ -1151,6 +1254,16 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             j = HL_JOBS.get(m.group(1))
             return self.send_json(200 if j else 404, j or {'error': 'Unbekannte Suche'})
+        if path == '/api/ai/status':
+            return self.send_json(200, AIV.status())
+        m = re.fullmatch(r'/api/ai/job/([0-9a-f]+)', path)
+        if m:
+            v = AIV.view(m.group(1))
+            return self.send_json(200, v) if v else self.send_json(404, {'error': 'Unbekannt'})
+        if path == '/api/ai/video':
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            p = AIV.clip_path((q.get('p') or [''])[0])
+            return self.send_file(p, 'video/mp4') if p else self.send_json(404, {'error': 'Nicht gefunden'})
         if path == '/api/learn':
             return self.send_json(200, LEARN.summary(DEFAULTS, STYLE_NAMES))
         if path == '/api/learn/style':
@@ -1291,6 +1404,34 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(400, {'error': 'Die Songtext-Erkennung ist in diesem Programm nicht enthalten.'})
                 LYRICS.download()
                 return self.send_json(200, LYRICS.status())
+            if path == '/api/ai/download':
+                AIV.download()
+                return self.send_json(200, AIV.status())
+            if path == '/api/ai/remove':
+                AIV.remove()
+                return self.send_json(200, AIV.status())
+            if path == '/api/ai/cancel':
+                AIV.cancel(str(data.get('id') or ''))
+                return self.send_json(200, {'ok': True})
+            if path in ('/api/ai/info', '/api/ai/start'):
+                img = STAGED.get(data.get('image') or '')
+                if not img:
+                    return self.send_json(400, {'error': 'Bitte zuerst ein Bild laden.'})
+                st = clean_settings(data.get('settings'))
+                key = ai_key(img, st)
+                length = ai_length(st, STAGED.get(data.get('audio') or ''))
+                if path == '/api/ai/info':
+                    return self.send_json(200, {'key': key, 'have': AIV.clips(key), 'length': length,
+                                                'estimate': AIV.estimate(st['aiQual'], length),
+                                                'estimate_variants': AIV.estimate(st['aiQual'], 1)})
+                kind = 'full' if data.get('kind') == 'full' else 'variants'
+                try:
+                    jid = AIV.start(kind, ai_still(img, st), {
+                        'key': key, 'quality': st['aiQual'], 'motion': st['aiMotion'], 'text': st['aiText'], 'fmt': st['fmt'],
+                        'vertical': bool(FORMATS[st['fmt']][3]), 'seed': int(data.get('seed') or 11), 'length': length})
+                except RuntimeError as ex:
+                    return self.send_json(400, {'error': str(ex)})
+                return self.send_json(200, {'id': jid, 'key': key})
             if path == '/api/learn/hl':
                 LEARN.hl_pick(data.get('kind'), data.get('feat'))
                 return self.send_json(200, {'ok': True})

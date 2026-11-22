@@ -106,7 +106,7 @@
     <div class="mk-body" id="mkBody">
      <div class="mk-row">
       <div class="seg mk-target" id="mkTarget" role="group" aria-label="Was markieren?" hidden>
-       <button type="button" data-t="viz">🎵 Visualizer</button><button type="button" data-t="fx">✨ Effekt</button>
+       <button type="button" data-t="viz">🎵 Visualizer</button><button type="button" data-t="fx">✨ Effekt</button><button type="button" data-t="ai">🎬 KI-Video</button>
       </div>
       <div class="seg mk-tabs" id="mkTabs" role="group" aria-label="Werkzeuge">
        <button type="button" data-tab="hand">✋ Von Hand</button><button type="button" data-tab="ai">✨ KI</button>
@@ -216,6 +216,42 @@
    <div class="viz-foot">
     <button type="button" class="btn accent" id="fxPreviewBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Vorschau mit Ton (6 s)</button>
     <small>Im Vorschaubild siehst du eine Skizze – die Vorschau zeigt das echte Ergebnis. Effekte machen das Umwandeln etwas langsamer.</small>
+   </div>
+  </div>
+
+  <div data-fold="ai" class="card aicard" id="aiCard">
+   <div class="row-between">
+    <h2><span class="n">🎬</span> KI-Video <span class="new-badge">NEU</span></h2>
+    <button type="button" class="switch" id="aiSwitch" role="switch" aria-checked="false" aria-label="KI-Video einsetzen"><i></i></button>
+   </div>
+   <p class="mhint">Eine KI erzeugt aus deinem Bild echte Bewegung – offline auf deinem PC. Nur die gewählte Fläche bewegt sich, der Rest bleibt dein scharfes Original.</p>
+   <div id="aiPkg" class="ai-pkg"></div>
+   <div id="aiMain" hidden>
+    <div class="field"><span>Bewegung</span>
+     <div class="ai-motions" id="aiMotions" role="group" aria-label="Bewegung"></div>
+     <input type="text" id="aiText" maxlength="300" placeholder="Eigene Beschreibung (optional, Deutsch geht) – z. B. „sie lächelt und dreht den Kopf zur Kamera“" autocomplete="off">
+    </div>
+    <div class="ai-grid">
+     <div class="field"><span>Wo?</span>
+      <div class="seg" id="aiWhere" role="group" aria-label="Wo bewegt sich das Bild?"><button type="button" data-v="full">Ganzes Bild</button><button type="button" data-v="mask">Nur markierte Fläche</button></div>
+      <small class="mhint" id="aiWhereHint"></small>
+     </div>
+     <div class="field"><span>Qualität</span>
+      <div class="seg" id="aiQual" role="group" aria-label="Qualität"><button type="button" data-v="fast">Schnell</button><button type="button" data-v="good">Beste</button></div>
+      <small class="mhint" id="aiQualHint"></small>
+     </div>
+     <div class="field"><span>Länge</span>
+      <div class="seg" id="aiLens" role="group" aria-label="Länge"><button type="button" data-v="10">10 s</button><button type="button" data-v="30">30 s</button><button type="button" data-v="60">1 Min</button><button type="button" data-v="120">2 Min</button><button type="button" data-v="0">Ganzer Song</button></div>
+      <small class="mhint" id="aiLenHint"></small>
+     </div>
+    </div>
+    <div class="ai-steps">
+     <div class="ai-step"><b>1</b><div><button type="button" class="btn accent" id="aiVarBtn">3 Varianten erzeugen</button><small id="aiVarHint"></small></div></div>
+     <div class="ai-vars" id="aiVars"></div>
+     <div class="ai-step"><b>2</b><div><button type="button" class="btn glow" id="aiFullBtn" disabled>Volle Länge berechnen</button><small id="aiFullHint">Zuerst eine Variante auswählen.</small></div></div>
+     <div class="ai-prog" id="aiProg" hidden><div class="bar"><i id="aiBar"></i></div><div class="ai-prog-row"><small id="aiProgText"></small><button type="button" class="btn tiny danger" id="aiCancel">Abbrechen</button></div></div>
+     <div class="ai-result" id="aiResult" hidden></div>
+    </div>
    </div>
   </div>
 

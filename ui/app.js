@@ -599,6 +599,7 @@ async function loadProject(promise) {
     S.settings = Object.assign({}, S.settings, d.settings);
     MK.mode = modeFromSettings(); await loadMaskFromServer(S.settings.vizShape === 'mask' ? S.settings.vizMask : '', 'viz');
     await loadMaskFromServer(S.settings.fxArea === 'mask' ? S.settings.fxMask : '', 'fx');
+    await loadMaskFromServer(S.settings.aiArea === 'mask' ? S.settings.aiMask : '', 'ai');
     adopt(d.audio, true); adopt(d.image, true);
     changed('fmt'); renderViz(true);
     if ($('#loadDlg').open) $('#loadDlg').close();
@@ -617,18 +618,20 @@ $('#showProjDir').onclick = () => api('/api/show', { path: S.projDir || S.outdir
 
 /* ---------- Markieren: Fläche malen, Linie, Ring (+ KI) ---------- */
 const MK = { tab: 'hand', target: 'viz', mode: 'box', tool: 'brush', size: 36, aiPts: [], aiBase: null, ringAi: false, drawing: false, last: null, start: null, line: [], busy: '', drag: -1, sugTimer: 0 };
-const MASKC = { viz: document.createElement('canvas'), fx: document.createElement('canvas') };
-const MURL = { viz: '', fx: '' };
+const MASKC = { viz: document.createElement('canvas'), fx: document.createElement('canvas'), ai: document.createElement('canvas') };
+const MURL = { viz: '', fx: '', ai: '' };
 const mc = () => MASKC[MK.target];
 /* Markieren gilt für den Visualizer ODER die Bild-Effekte: M.Path = vizPath bzw. fxPath usw. */
-const P = k => (MK.target === 'fx' ? 'fx' : 'viz') + k;
+const P = k => (MK.target === 'viz' ? 'viz' : MK.target) + k;      // vizX / fxX / aiX
 const M = new Proxy({}, { get: (_, k) => S.settings[P(k)], set: (_, k, v) => { S.settings[P(k)] = v; return true } });
-function shp(t = MK.target) { const s = S.settings; if (t === 'fx') return s.fxArea === 'full' ? 'box' : s.fxArea; return s.vizShape }
-function setShp(v) { if (MK.target === 'fx') S.settings.fxArea = v === 'box' ? 'full' : v; else { S.settings.vizShape = v; if (v !== 'box') S.settings.vizDock = '' } }
+function shp(t = MK.target) { const s = S.settings; if (t !== 'viz') return s[t + 'Area'] === 'full' ? 'box' : s[t + 'Area']; return s.vizShape }
+function setShp(v) { if (MK.target !== 'viz') S.settings[MK.target + 'Area'] = v === 'box' ? 'full' : v; else { S.settings.vizShape = v; if (v !== 'box') S.settings.vizDock = '' } }
 const fxOn = () => S.settings.fx && S.settings.fx !== 'none';
-function markOn() { return MK.target === 'fx' ? fxOn() : S.settings.viz }
+const aiOn = () => !!S.settings.ai;
+function markOn() { return MK.target === 'fx' ? fxOn() : MK.target === 'ai' ? aiOn() : S.settings.viz }
+function markTargets() { const s = S.settings; return ['viz', 'fx', 'ai'].filter(t => t === 'viz' ? s.viz : t === 'fx' ? fxOn() : aiOn()) }
 function setAi(v) { if (MK.target === 'viz') S.settings.vizAi = !!v }
-const tName = () => MK.target === 'fx' ? 'der Effekt' : 'der Visualizer';
+const tName = () => MK.target === 'fx' ? 'der Effekt' : MK.target === 'ai' ? 'die KI-Bewegung' : 'der Visualizer';
 const isTall = () => fmtOf(S.settings.fmt)[3];
 function maskSize() { return isTall() ? [540, 960] : [960, 540] }
 function ensureMask() {
@@ -647,14 +650,16 @@ function busy(text) { MK.busy = text || ''; renderMarkTools(); renderAiRow() }
 function renderMark() {
   if (!S.settings) return;
   const s = S.settings;
-  if (MK.target === 'fx' && !fxOn() && s.viz) { MK.target = 'viz'; MK.mode = modeFromSettings() }
-  if (MK.target === 'viz' && !s.viz && fxOn()) { MK.target = 'fx'; MK.mode = modeFromSettings() }
+  const tg = markTargets();
+  if (tg.length && !tg.includes(MK.target)) { MK.target = tg[0]; MK.mode = modeFromSettings() }
+  if (MK.target === 'ai' && (MK.mode === 'line' || MK.mode === 'ring')) MK.mode = modeFromSettings();
   const on = markOn();
-  $('#markBar').hidden = !s.viz && !fxOn();
-  $('#mkTarget').hidden = !(s.viz && fxOn());
-  $$('#mkTarget button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.t === MK.target)));
-  $('#mkModes [data-m="box"]').textContent = MK.target === 'fx' ? 'Ganzes Bild' : 'Kasten';
-  $('#mkModes').setAttribute('aria-label', MK.target === 'fx' ? 'Wo soll der Effekt wirken?' : 'Wo soll der Visualizer entstehen?');
+  $('#markBar').hidden = !tg.length;
+  $('#mkTarget').hidden = tg.length < 2;
+  $$('#mkTarget button').forEach(b => { b.hidden = !tg.includes(b.dataset.t); b.setAttribute('aria-pressed', String(b.dataset.t === MK.target)) });
+  $('#mkModes [data-m="box"]').textContent = MK.target === 'viz' ? 'Kasten' : 'Ganzes Bild';
+  $$('#mkModes [data-m="line"],#mkModes [data-m="ring"]').forEach(b => { b.hidden = MK.target === 'ai' });
+  $('#mkModes').setAttribute('aria-label', MK.target === 'fx' ? 'Wo soll der Effekt wirken?' : MK.target === 'ai' ? 'Wo soll sich das Bild bewegen?' : 'Wo soll der Visualizer entstehen?');
   ensureMask();
   if (MK.tab === 'hand' && MK.tool === 'ai') MK.tool = 'brush';
   if (MK.tab === 'ai' && MK.mode === 'mask') MK.tool = 'ai';
@@ -687,11 +692,11 @@ function markHint() {
         (MK.target === 'viz' ? ' Was die KI markiert, wird als Welle dargestellt.' : '');
     return;
   }
-  const fxBox = MK.target === 'fx' && MK.mode === 'box';
+  const fxBox = MK.target !== 'viz' && MK.mode === 'box';
   const none = (MK.mode === 'mask' && shp() !== 'mask') || ((MK.mode === 'line' || MK.mode === 'ring') && shp() !== 'path' && !MK.line.length);
   h.hidden = !markOn();
-  h.textContent = fxBox ? 'Der Effekt wirkt auf dem ganzen Bild. Mit Fläche, Linie oder Ring legst du fest, wo genau.'
-    : t + (none && MK.mode !== 'box' ? (MK.target === 'fx' ? ' (Noch nichts markiert – bis dahin wirkt der Effekt auf dem ganzen Bild.)' : ' (Noch nichts markiert – bis dahin gilt der Kasten.)') : '');
+  h.textContent = fxBox ? (MK.target === 'ai' ? 'Das ganze Bild bewegt sich. Mit „Fläche“ legst du fest, dass sich nur ein Teil bewegt – der Rest bleibt dein scharfes Original.' : 'Der Effekt wirkt auf dem ganzen Bild. Mit Fläche, Linie oder Ring legst du fest, wo genau.')
+    : t + (none && MK.mode !== 'box' ? (MK.target === 'fx' ? ' (Noch nichts markiert – bis dahin wirkt der Effekt auf dem ganzen Bild.)' : MK.target === 'ai' ? ' (Noch nichts markiert – bis dahin bewegt sich das ganze Bild.)' : ' (Noch nichts markiert – bis dahin gilt der Kasten.)') : '');
 }
 function renderMarkTools() {
   const box = $('#mkTools'); box.textContent = '';
@@ -747,7 +752,7 @@ function aiAction(m) {
 function renderAiRow() {
   const row = $('#mkAiRow'); if (MK.tab !== 'ai') return; row.textContent = '';
   const ai = S.info && S.info.ai, ok = !!(ai && ai.tools) && !!S.image;
-  const acts = [['mask', '✨ Motiv auswählen', 'Fläche'], ['line', '✨ Linie an Kante', 'Linie'], ['ring', '✨ Ring ums Motiv', 'Ring']];
+  const acts = MK.target === 'ai' ? [['mask', '✨ Motiv auswählen', 'Fläche']] : [['mask', '✨ Motiv auswählen', 'Fläche'], ['line', '✨ Linie an Kante', 'Linie'], ['ring', '✨ Ring ums Motiv', 'Ring']];
   if (MK.target === 'viz') acts.push(['box', '✨ Platzvorschlag', 'Kasten']);
   const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'KI-Werkzeug' });
   acts.forEach(([m, n, t]) => seg.append(el('button', { type: 'button', title: t, disabled: !ok, 'aria-pressed': String(MK.mode === m), onclick: () => aiAction(m) }, n)));
@@ -764,9 +769,10 @@ function renderAiRow() {
 }
 function markSummary() {
   const s = S.settings, part = [];
-  const name = (t) => { const sh = shp(t), cl = t === 'fx' ? s.fxClosed : s.vizClosed; return sh === 'mask' ? 'Fläche' : sh === 'path' ? (cl ? 'Ring' : 'Linie') : t === 'fx' ? 'ganzes Bild' : 'Kasten' };
+  const name = (t) => { const sh = shp(t), cl = t === 'fx' ? s.fxClosed : s.vizClosed; return sh === 'mask' ? 'Fläche' : sh === 'path' ? (cl ? 'Ring' : 'Linie') : t !== 'viz' ? 'ganzes Bild' : 'Kasten' };
   if (s.viz) part.push('Visualizer: ' + name('viz') + (s.vizAi ? ' (✨ KI-Welle)' : ''));
   if (fxOn()) part.push('Effekt: ' + name('fx'));
+  if (aiOn()) part.push('KI-Video: ' + name('ai'));
   $('#mkSum').textContent = part.join(' · ');
 }
 function pickTarget(t) { MK.target = t; MK.line = []; MK.ringAi = false; MK.aiPts = []; MK.mode = modeFromSettings(); changed('viz') }
@@ -810,12 +816,12 @@ const uploadMask = debounce(async () => {
     const blob = await new Promise(r => maskC.toBlob(r, 'image/png'));
     const r = await fetch('/api/mark/mask', { method: 'POST', headers: { 'X-Studio': TOKEN }, body: blob });
     const d = await r.json(); if (!r.ok) throw new Error(d.error);
-    const s = S.settings, k = tg === 'fx' ? 'fx' : 'viz';
+    const s = S.settings, k = tg === 'viz' ? 'viz' : tg;
     if (d.token) {
       MURL[tg] = maskC.toDataURL('image/png');
       Object.assign(s, { [k + 'Mask']: d.token, [k + 'X']: d.bbox[0], [k + 'Y']: d.bbox[1], [k + 'W']: Math.max(2, d.bbox[2]), [k + 'H']: Math.max(2, d.bbox[3]) });
-      if (tg === 'fx') s.fxArea = 'mask'; else Object.assign(s, { vizShape: 'mask', vizDock: '', vizAi: MK.tab === 'ai' });
-    } else { s[k + 'Mask'] = ''; MURL[tg] = ''; if (tg === 'fx') s.fxArea = 'full'; else { s.vizShape = 'box'; s.vizAi = false } }
+      if (tg !== 'viz') s[tg + 'Area'] = 'mask'; else Object.assign(s, { vizShape: 'mask', vizDock: '', vizAi: MK.tab === 'ai' });
+    } else { s[k + 'Mask'] = ''; MURL[tg] = ''; if (tg !== 'viz') s[tg + 'Area'] = 'full'; else { s.vizShape = 'box'; s.vizAi = false } }
     changed('viz');
   } catch (e) { toast('Maske: ' + e.message, true) }
 }, 350);
@@ -826,7 +832,7 @@ async function loadMaskFromServer(tok, tg = 'viz') {
     const resp = await fetch('/api/maskfile/' + tok, { headers: { 'X-Studio': TOKEN } });
     if (!resp.ok) {                                // Markierung von einer früheren Sitzung gibt es nicht mehr
       MURL[tg] = '';
-      if (tg === 'fx') { S.settings.fxMask = ''; if (S.settings.fxArea === 'mask') S.settings.fxArea = 'full' }
+      if (tg !== 'viz') { S.settings[tg + 'Mask'] = ''; if (S.settings[tg + 'Area'] === 'mask') S.settings[tg + 'Area'] = 'full' }
       else { S.settings.vizMask = ''; if (S.settings.vizShape === 'mask') S.settings.vizShape = 'box' }
       MK.mode = modeFromSettings(); changed('viz'); return;
     }
@@ -929,7 +935,7 @@ function drawMarkSvg() {
   if (editPts.length) {
     const px = pathPx(editPts, fw, fh), closed = !MK.line.length && M.Closed;
     html += `<polyline points="${px.concat(closed ? [px[0]] : []).map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ')}" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="6 5" opacity=".8"/>`;
-    const hand = MK.tab === 'hand' && (MK.target === 'fx' || !s.vizAi) && editPts.length <= 24;
+    const hand = MK.tab === 'hand' && (MK.target !== 'viz' || !s.vizAi) && editPts.length <= 24;
     if (MK.mode === 'line' && hand) px.forEach((q, i) => { html += `<circle class="pt" data-i="${i}" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="6"/>` });
   }
   svg.innerHTML = html;
@@ -1040,8 +1046,8 @@ function renderFx() {
   if (!tb.childElementCount) {
     info.effects.forEach(e => tb.append(el('button', { type: 'button', class: 'fxtile', 'data-id': e.id, title: e.name, 'aria-label': e.name, onclick: () => setFx(e.id) },
       el('span', { class: 'fx-ic', 'aria-hidden': 'true', html: `<svg viewBox="0 0 24 24">${FX_ICON[e.id] || ''}</svg>` }), el('span', {}, e.short))));
-    tb.append(el('button', { type: 'button', class: 'fxtile soon', title: 'KI-Video – demnächst', 'aria-label': 'KI-Video – demnächst', onclick: soonInfo },
-      el('span', { class: 'fx-ic', 'aria-hidden': 'true' }, '🎬'), el('span', {}, 'KI-Video'), el('em', {}, 'bald')));
+    tb.append(el('button', { type: 'button', class: 'fxtile ai-tile', title: 'KI-Video – echte Bewegung aus deinem Bild', 'aria-label': 'KI-Video öffnen', onclick: openAiCard },
+      el('span', { class: 'fx-ic', 'aria-hidden': 'true' }, '🎬'), el('span', {}, 'KI-Video'), el('em', {}, 'NEU')));
   }
   $$('.fxtile').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === s.fx)));
   const cur = info.effects.find(e => e.id === s.fx) || info.effects[0];
@@ -1174,14 +1180,151 @@ function fxFrame(ts) {
 }
 requestAnimationFrame(fxFrame);
 
-/* KI-Video – kommt später */
-function renderSoon() {}
-function soonInfo() {
-  const gp = (S.info && S.info.gpu) || {};
-  const pc = (gp.cards && gp.cards.length ? gp.text.replace('Grafikkarte: ', 'Deine Grafikkarte: ') + '. ' : '') + (gp.video_text || '');
-  ask('🎬 KI-Video – demnächst', 'Später kann eine KI aus deinem Bild und einem markierten Bereich echte Bewegung erzeugen – z. B. eine Person, die tanzt, oder Wasser, das wirklich fließt. Das kommt als freiwilliger Zusatz-Download (ca. 15–20 GB) und braucht eine starke NVIDIA-Grafikkarte.\n\n' + pc, 'Alles klar');
+/* ---------- KI-Video (1.8.0): echte Bewegung aus dem Bild, offline ---------- */
+const AI = { st: null, info: null, infoKey: '', job: '', jobKind: '', timer: 0, seed: 0, poll: 0 };
+const dur = sec => { sec = Math.max(0, Math.round(sec)); if (sec < 90) return `${sec} s`; const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60); return h ? `${h} Std.${m ? ' ' + m + ' Min.' : ''}` : `${m} Min.` };
+function openAiCard() { const c = $('#aiCard'); foldToggle(c, true); c.scrollIntoView({ behavior: 'smooth', block: 'start' }); refreshAi() }
+async function refreshAi() {
+  try { AI.st = await api('/api/ai/status') } catch (_) { return }
+  renderAi(); aiInfo();
 }
-
+const aiInfo = debounce(async () => {
+  if (!S.image || !AI.st || !AI.st.ready) { AI.info = null; renderAi(); return }
+  try {
+    AI.info = await api('/api/ai/info', { image: S.image.token, audio: S.audio && S.audio.token, settings: S.settings });
+    const s = S.settings;
+    if (s.aiClip && !s.aiClip.startsWith(AI.info.key + '/')) { s.aiClip = ''; saveSettings(); refreshCommand() }   // Bild/Bewegung geändert -> altes KI-Video passt nicht mehr
+    if (AI.seed && !AI.info.have.variants.some(v => v.seed === AI.seed)) AI.seed = 0;
+    if (!AI.seed && s.aiClip) AI.seed = +(s.aiClip.match(/seed-(\d+)/) || [])[1] || 0;
+  } catch (_) { AI.info = null }
+  renderAi();
+}, 400);
+function renderAi() {
+  const s = S.settings; if (!s) return;
+  $('#aiSwitch').setAttribute('aria-checked', String(!!s.ai));
+  const st = AI.st, pkg = $('#aiPkg'); pkg.textContent = '';
+  const ready = !!(st && st.ready);
+  $('#aiMain').hidden = !ready;
+  if (st && !ready) {
+    const d = st.download || {}, box = el('div', { class: 'box' });
+    if (!st.tool) box.append(el('p', {}, 'Der KI-Motor fehlt in dieser Installation. Bitte das Programm mit dem neuesten Installer neu installieren.'));
+    else if (d.state === 'running') {
+      box.append(el('p', {}, el('b', {}, `KI-Video-Paket wird geladen … ${d.percent || 0} %`), ` (${String(d.done_gb || 0).replace('.', ',')} von ${String(d.total_gb || st.need_gb).replace('.', ',')} GB)`),
+        el('div', { class: 'ai-prog', style: 'padding:0' }, el('div', { class: 'bar' }, el('i', { style: `width:${d.percent || 0}%` }))),
+        el('p', { style: 'margin-top:8px' }, 'Du kannst währenddessen normal weiterarbeiten. Wird das Programm geschlossen, macht der Download beim nächsten Mal dort weiter.'));
+      aiPollStatus();
+    } else {
+      box.append(el('p', {}, el('b', {}, 'Einmaliger Zusatz-Download: ca. ' + String(st.need_gb).replace('.', ',') + ' GB'), ` (KI-Modell Wan 2.2, Apache-2.0-Lizenz). Freier Speicher: ${String(st.free_gb).replace('.', ',')} GB.`),
+        el('p', {}, 'Danach läuft alles offline auf deinem PC – nichts wird hochgeladen.'));
+      if (d.state === 'error') box.append(el('p', { style: 'color:var(--bad)' }, d.error));
+      box.append(el('div', { class: 'acts' }, el('button', { type: 'button', class: 'btn glow', onclick: aiDownload, disabled: st.free_gb < st.need_gb + 1 }, d.state === 'error' ? 'Erneut versuchen' : 'KI-Video-Paket laden')));
+      if (st.free_gb < st.need_gb + 1) box.append(el('p', { style: 'color:var(--bad);margin-top:8px' }, 'Nicht genug freier Speicher auf dem Laufwerk mit dem Einstellungsordner.'));
+    }
+    if (st.devices && st.devices.length) box.append(el('div', { class: 'dev' }, 'Rechnet mit: ' + aiDevText(st.devices)));
+    pkg.append(box);
+  }
+  if (!ready) return;
+  // Bewegungen
+  const mb = $('#aiMotions');
+  if (!mb.childElementCount) st.motions.forEach(([id, n]) => mb.append(el('button', { type: 'button', 'data-v': id, onclick: () => aiSet('aiMotion', id) }, n)));
+  $$('#aiMotions button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.aiMotion)));
+  if (document.activeElement !== $('#aiText')) $('#aiText').value = s.aiText || '';
+  $$('#aiWhere button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.aiArea || (b.dataset.v === 'full' && s.aiArea !== 'mask'))));
+  $$('#aiQual button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.aiQual)));
+  $$('#aiLens button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === s.aiLen)));
+  $('#aiWhereHint').textContent = s.aiArea === 'mask' ? 'Die Fläche malst du im Vorschaubild oben („Markieren“ → 🎬 KI-Video).' : 'Das ganze Bild bewegt sich.';
+  $('#aiQualHint').textContent = s.aiQual === 'good' ? '1280 × 704 – schöner, braucht aber etwa 3–4× so lange.' : '832 × 480 – deutlich schneller, wird auf dein Videoformat hochgerechnet.';
+  const inf = AI.info, run = !!AI.job;
+  const est = inf && inf.estimate, ev = inf && inf.estimate_variants;
+  $('#aiLenHint').textContent = !inf ? '' : `${inf.length >= 60 ? dur(inf.length) : Math.round(inf.length) + ' s'} = ${est.segments} Stücke · Rechenzeit ca. ${dur(est.seconds)}` + (est.measured ? '' : ' (grobe Schätzung – wird nach der ersten Variante genauer)');
+  // Schritt 1: Varianten
+  $('#aiVarBtn').disabled = run || !S.image;
+  $('#aiVarHint').textContent = !S.image ? 'Zuerst ein Bild hineinziehen.' : ev ? `Erzeugt die ersten Sekunden in 3 Varianten · ca. ${dur(ev.seconds * 3)}` : '';
+  const vb = $('#aiVars'); vb.textContent = '';
+  for (const v of (inf && inf.have.variants) || []) {
+    const sel = v.seed === AI.seed;
+    const vid = el('video', { src: '/api/ai/video?p=' + encodeURIComponent(v.video), muted: true, loop: true, playsinline: true, preload: 'metadata' });
+    vid.muted = true; vid.addEventListener('mouseenter', () => vid.play().catch(() => {})); vid.addEventListener('mouseleave', () => vid.pause());
+    if (sel) setTimeout(() => vid.play().catch(() => {}), 50);
+    vb.append(el('div', { class: 'ai-var' + (sel ? ' sel' : ''), onclick: () => { AI.seed = v.seed; renderAi() } }, vid,
+      el('span', {}, sel ? '✓ Ausgewählt' : 'Diese nehmen', el('small', {}, '#' + v.seed))));
+  }
+  // Schritt 2: volle Länge
+  const have = inf && inf.have.clips.find(c => c.seed === AI.seed && (c.seconds === (s.aiLen || Math.round(inf.length))));
+  const part = inf && inf.have.partial.find(p => p.seed === AI.seed);
+  const inUse = have && s.aiClip === have.clip;
+  $('#aiFullBtn').disabled = run || !AI.seed || inUse;
+  $('#aiFullBtn').textContent = inUse ? '✓ Wird verwendet' : have ? 'Schon fertig – verwenden' : part ? 'Weiterrechnen (angefangen)' : 'Volle Länge berechnen';
+  $('#aiFullHint').textContent = !AI.seed ? 'Zuerst eine Variante auswählen.' : inUse ? 'Andere Länge oder Variante wählen, um ein neues KI-Video zu berechnen.' : have ? 'Für diese Länge gibt es schon ein fertiges KI-Video.'
+    : est ? `ca. ${dur(est.seconds)} · fertige Stücke bleiben gespeichert – du kannst abbrechen und später weitermachen.` : '';
+  // Ergebnis
+  const res = $('#aiResult');
+  res.hidden = !s.aiClip; res.textContent = '';
+  if (s.aiClip) {
+    const sec = (s.aiClip.match(/ki-video-(\d+)s/) || [])[1];
+    res.append(el('video', { src: '/api/ai/video?p=' + encodeURIComponent(s.aiClip), muted: true, loop: true, autoplay: true, playsinline: true }),
+      el('div', { class: 'tx' }, el('b', {}, `✓ KI-Video fertig${sec ? ' (' + dur(+sec) + ')' : ''}`),
+        el('small', {}, s.ai ? 'Wird beim Umwandeln eingesetzt' + (s.aiArea === 'mask' ? ' – nur in der markierten Fläche.' : '.') + ' Ist der Song länger, wird es nahtlos wiederholt.' : 'Schalter oben einschalten, damit es im Video verwendet wird.')),
+      el('button', { type: 'button', class: 'btn small', onclick: () => { s.aiClip = ''; changed('ai') } }, 'Nicht verwenden'));
+    res.querySelector('video').muted = true;
+  }
+}
+function aiDevText(devs) {
+  const g = devs.filter(d => d.gpu);
+  return g.length ? g.map(d => d.desc || d.name).join(' + ') : 'nur Prozessor (sehr langsam – keine passende Grafikkarte gefunden)';
+}
+function aiSet(k, v) { S.settings[k] = v; changed('ai'); aiInfo() }
+$('#aiSwitch').onclick = () => { S.settings.ai = !S.settings.ai; changed('ai'); if (S.settings.ai) { refreshAi(); foldToggle($('#aiCard'), true) } };
+$$('#aiWhere button').forEach(b => b.onclick = () => {
+  S.settings.aiArea = b.dataset.v === 'mask' && S.settings.aiMask ? 'mask' : 'full';
+  if (b.dataset.v === 'mask') { S.settings.ai = true; MK.target = 'ai'; MK.mode = 'mask'; foldToggle($('#markBar'), true); $('#markBar').scrollIntoView({ behavior: 'smooth', block: 'center' }); if (!S.settings.aiMask) toast('Male jetzt im Vorschaubild die Fläche, die sich bewegen soll.') }
+  changed('ai');
+});
+$$('#aiQual button').forEach(b => b.onclick = () => aiSet('aiQual', b.dataset.v));
+$$('#aiLens button').forEach(b => b.onclick = () => aiSet('aiLen', +b.dataset.v));
+$('#aiText').addEventListener('input', debounce(() => aiSet('aiText', $('#aiText').value), 700));
+async function aiDownload() {
+  try { AI.st = await api('/api/ai/download', {}); renderAi(); aiPollStatus() } catch (e) { toast(e.message, true) }
+}
+function aiPollStatus() {
+  clearTimeout(AI.poll);
+  AI.poll = setTimeout(async () => {
+    try { AI.st = await api('/api/ai/status') } catch (_) { return }
+    renderAi();
+    if (AI.st.ready) { toast('✓ KI-Video-Paket ist installiert'); aiInfo() }
+  }, 2000);
+}
+async function aiStart(kind) {
+  if (!S.image) { toast('Zuerst ein Bild hineinziehen'); return }
+  try {
+    const d = await api('/api/ai/start', { kind, image: S.image.token, audio: S.audio && S.audio.token, settings: S.settings, seed: AI.seed });
+    AI.job = d.id; AI.jobKind = kind; $('#aiProg').hidden = false; renderAi(); aiPollJob();
+  } catch (e) { toast(e.message, true) }
+}
+$('#aiVarBtn').onclick = () => aiStart('variants');
+$('#aiFullBtn').onclick = () => {
+  const inf = AI.info, s = S.settings;
+  const have = inf && inf.have.clips.find(c => c.seed === AI.seed && c.seconds === (s.aiLen || Math.round(inf.length)));
+  if (have) { s.aiClip = have.clip; s.ai = true; changed('ai'); toast('✓ KI-Video wird verwendet'); return }
+  aiStart('full');
+};
+$('#aiCancel').onclick = () => { if (AI.job) api('/api/ai/cancel', { id: AI.job }).catch(() => {}) };
+function aiPollJob() {
+  clearTimeout(AI.timer);
+  AI.timer = setTimeout(async () => {
+    let j; try { j = await api('/api/ai/job/' + AI.job) } catch (_) { AI.job = ''; renderAi(); return }
+    $('#aiBar').style.width = (j.percent || 0) + '%';
+    $('#aiProgText').textContent = `${j.percent || 0} % · ${j.note || (j.state === 'wartet' ? 'wartet …' : 'läuft …')}` + (j.eta ? ` · noch ca. ${dur(j.eta)}` : '');
+    if (j.state === 'läuft' || j.state === 'wartet') { aiPollJob(); return }
+    AI.job = ''; $('#aiProg').hidden = true;
+    if (j.state === 'fertig' && j.result) {
+      if (AI.jobKind === 'variants') { toast('✓ 3 Varianten fertig – wähle die schönste aus'); if (!AI.seed) AI.seed = j.result.variants[0].seed }
+      else { S.settings.aiClip = j.result.clip; S.settings.ai = true; changed('ai'); toast('✓ KI-Video ist fertig und wird beim Umwandeln verwendet') }
+    } else if (j.state === 'fehler') ask('KI-Video', j.error || 'Unbekannter Fehler', 'OK');
+    aiInfo(); refreshAi();
+  }, 1500);
+}
+refreshAi();
 
 /* ---------- Shorts-Helfer: Länge + beste Stelle (KI) ---------- */
 const HL = { id: '', timer: 0, res: null, stopAt: 0, lyrTimer: 0 };
@@ -1299,6 +1442,7 @@ const FOLD_SUM = {
   fit: s => (FITS.find(f => f[0] === s.fit) || FITS[0])[1],
   viz: s => !s.viz ? 'Aus' : s.vizAi ? '✨ KI-Welle · ' + (AI_WAVES.find(w => w[0] === s.vizAiWave) || AI_WAVES[0])[1] : (VSTYLES.find(x => x[0] === s.vizStyle) || VSTYLES[0])[2],
   fx: s => '',
+  ai: s => !s.ai ? 'Aus' : s.aiClip ? '✓ fertig · ' + (s.aiArea === 'mask' ? 'Fläche' : 'ganzes Bild') : 'An – noch nicht berechnet',
   time: s => {
     if (!S.audio) return 'Noch kein Song';
     const n = ((S.meta && S.meta.notes) || []).length;
@@ -1343,7 +1487,8 @@ setupFolds();
 const saveSettings = debounce(() => api('/api/config', { settings: S.settings }).catch(() => {}), 600);
 function changed(what) {
   const s = S.settings;
-  renderFormats(); renderFits(); renderFps(); renderEnc(); renderSeg('#colorSeg', 'color'); renderViz(); renderFx(); renderShort(); foldSummaries();
+  renderFormats(); renderFits(); renderFps(); renderEnc(); renderSeg('#colorSeg', 'color'); renderViz(); renderFx(); renderShort(); renderAi(); foldSummaries();
+  if (what === 'image' || what === 'fmt' || what === 'fit' || what === 'audio') aiInfo();
   $('#fadeIn').value = s.fadeIn; $('#fadeOut').value = s.fadeOut;
   $('#fiVal').textContent = secDe(s.fadeIn); $('#foVal').textContent = secDe(s.fadeOut);
   $('#lgIn').textContent = secDe(s.fadeIn); $('#lgOut').textContent = secDe(s.fadeOut);
@@ -1810,7 +1955,8 @@ applyTheme(S.theme);
     S.presets = info.presets || []; renderPresets();
     MK.mode = modeFromSettings(); if (S.settings.vizShape === 'mask') loadMaskFromServer(S.settings.vizMask, 'viz');
     if (S.settings.fxArea === 'mask') loadMaskFromServer(S.settings.fxMask, 'fx');
-    renderFx(); renderSoon();
+    if (S.settings.aiArea === 'mask') loadMaskFromServer(S.settings.aiMask, 'ai');
+    renderFx(); refreshAi();
     $('#gpuText').textContent = info.gpu ? info.gpu.text : '';
     $('#aiText').textContent = info.ai ? (info.ai.model ? '✨ ' : '') + info.ai.text : '';
     $('#verText').textContent = info.version;

@@ -153,6 +153,10 @@ if ($sg) {
 }
 $up = Invoke-RestMethod "$base/api/update" -Headers $h
 "Update-Prüfung: aktuell $($up.current), neueste $($up.latest) $($up.error)" | Tee-Object -FilePath $Out -Append
+# ---- 1.8.0: KI-Video-Motor im Programm ----
+$ai = Invoke-RestMethod "$base/api/ai/status" -Headers $h
+"KI-Video: Motor $($ai.tool), Paket bereit $($ai.ready), Geräte: $(($ai.devices | ForEach-Object { $_.name + ' ' + $_.desc }) -join ' | ')" | Tee-Object -FilePath $Out -Append
+if (-not $ai.tool) { throw 'KI-Video-Motor (sd-cli) fehlt im Programm' }
 $ls = Invoke-RestMethod "$base/api/lyrics/status" -Headers $h
 "Songtext: Bibliothek $($ls.lib) $($ls.error)" | Tee-Object -FilePath $Out -Append
 if (-not $ls.lib) { throw 'Songtext-Erkennung (faster-whisper) fehlt im Programm' }
