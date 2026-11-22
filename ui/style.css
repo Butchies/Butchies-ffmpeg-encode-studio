@@ -22,6 +22,7 @@
 [data-theme=gold]{--a:#f5b544;--b:#ffdf8a;--bg:#0d0a05;--bg2:#1f1708;--glow:rgba(245,181,68,.4);--muted:#c9b991;--on:#1a1205}
 [data-theme=mono]{--a:#e5e5e5;--b:#9ca3af;--bg:#0a0a0a;--bg2:#171717;--glow:rgba(255,255,255,.22);--muted:#a3a3a3;--on:#0a0a0a}
 [data-theme=light]{--a:#7c3aed;--b:#db2777;--bg:#f6f2fb;--bg2:#ece3f8;--panel:rgba(30,10,60,.05);--panel2:rgba(30,10,60,.08);--line:rgba(30,10,60,.12);--text:#1d1430;--muted:#5f5374;--glow:rgba(124,58,237,.28);--on:#fff;color-scheme:light}
+[data-theme=bluewhite]{--a:#1668e3;--b:#38a3ff;--bg:#ffffff;--bg2:#e9f2fd;--panel:rgba(12,60,140,.045);--panel2:rgba(12,60,140,.085);--line:rgba(12,60,140,.14);--text:#0b1f3a;--muted:#4f6688;--glow:rgba(22,104,227,.26);--on:#fff;--ok:#0f9f6e;--bad:#d93a3a;color-scheme:light}
 /* Schriften je Design (wie die Layouts der Webseite) */
 [data-skin=club]{--fh:Unbounded,var(--fb)}
 [data-skin=wellen]{--fh:Quicksand,sans-serif;--fb:Quicksand,system-ui,sans-serif}
@@ -30,6 +31,7 @@
 [data-skin=lounge]{--fh:'Cormorant Garamond',Georgia,serif}
 [data-skin=index]{--fh:'Archivo Black',sans-serif;--fm:'Space Mono',ui-monospace,monospace}
 [data-skin=tag]{--fh:Manrope,sans-serif;--fb:Manrope,system-ui,sans-serif}
+[data-skin=klar]{--fh:Outfit,sans-serif;--fb:Outfit,system-ui,sans-serif}
 [data-skin=lounge] h2,[data-skin=lounge] .brand b{font-weight:700;letter-spacing:0}
 [data-skin=lounge] h2{font-size:19px}
 
@@ -346,7 +348,7 @@ dialog[open]{animation:dlg .3s ease}
 @keyframes speq{0%,100%{height:10px}50%{height:44px}}
 .sp-kicker{margin:0 0 4px;font-size:13px;font-weight:700;letter-spacing:.32em;text-transform:uppercase;color:var(--muted);animation:sprise .9s .2s both}
 .sp-title{margin:0;font:900 clamp(40px,7.5vw,84px)/1 var(--fh);background:linear-gradient(100deg,#fff 10%,var(--b) 50%,var(--a) 90%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sprise 1s .35s both,spshine 6s 1.5s ease-in-out infinite;padding:0 .05em}
-[data-theme=light] .sp-title{background-image:linear-gradient(100deg,var(--text) 10%,var(--b) 50%,var(--a) 90%)}
+[data-theme=light] .sp-title,[data-theme=bluewhite] .sp-title{background-image:linear-gradient(100deg,var(--text) 10%,var(--b) 50%,var(--a) 90%)}
 @keyframes spshine{50%{background-position:100% 0}}
 .sp-tag{margin:14px 0 0;font-size:18px;color:var(--muted);animation:sprise 1s .5s both}
 .sp-skip{margin:34px 0 0;font-size:12px;color:var(--muted);opacity:.7;animation:sprise 1s 1.2s both}
@@ -382,7 +384,7 @@ dialog[open]{animation:dlg .3s ease}
 @keyframes geq{0%,100%{height:6px}50%{height:44px}}
 .g-kicker{margin:0 0 6px;font-size:13px;font-weight:700;letter-spacing:.32em;text-transform:uppercase;color:var(--muted);animation:sprise .9s .25s both}
 .g-title{margin:0;font:900 clamp(52px,11vw,120px)/.95 var(--fh);padding:0 .06em;background:linear-gradient(100deg,#fff 10%,var(--b) 50%,var(--a) 90%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sprise 1s .4s both,spshine 2.4s .9s ease-in-out infinite}
-[data-theme=light] .g-title{background-image:linear-gradient(100deg,var(--text) 10%,var(--b) 50%,var(--a) 90%)}
+[data-theme=light] .g-title,[data-theme=bluewhite] .g-title{background-image:linear-gradient(100deg,var(--text) 10%,var(--b) 50%,var(--a) 90%)}
 .g-tag{margin:16px 0 0;font-size:18px;color:var(--muted);animation:sprise 1s .6s both}
 .g-hint{margin:8px 0 0;font-size:13px;color:var(--muted);opacity:.8;animation:sprise 1s .8s both}
 .goodbye.closing .g-center{transform:scale(.06);opacity:0;filter:blur(6px)}

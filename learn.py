@@ -26,6 +26,16 @@ STOP = set('''der die das und ich du er sie es wir ihr ein eine einen einem eine
 war mir mich dich dir uns euch so wie was wo wenn dann noch nur auch aber oder doch ja nein mal schon
 the a an and i you he she it we they is are am was be to of in on at for with my your me our not no yes so but or
 oh ah yeah na la hey ooh uh'''.split())
+# KI-Video-Bewertungen: Stichwort -> (Anzeige, Zusatz für die KI-Beschreibung)
+AI_TAGS = {
+    'strong': ('Bewegung zu stark', 'very subtle and gentle movement, minimal motion'),
+    'weak': ('Bewegung zu schwach', 'clearly visible, more pronounced movement'),
+    'face': ('Gesicht verzerrt', 'preserve the face exactly, no facial distortion, consistent identity'),
+    'flicker': ('Flackert / unruhig', 'temporally stable, smooth, no flicker'),
+    'blur': ('Unscharf', 'sharp crisp details'),
+    'color': ('Farben falsch', ''),
+    'perfect': ('Perfekt', ''),
+}
 MIN_STYLE = 3          # ab so vielen Videos werden Startwerte vorgeschlagen
 ALPHA = 0.3            # Lernrate (wie stark ein neues Beispiel zählt)
 
@@ -35,6 +45,7 @@ def _empty():
             'hl': {'picks': {k: 0 for k in KINDS}, 'n': 0, 'feat': None, 'shift': 0.0, 'shift_n': 0,
                    'end_shift': 0.0},
             'words': {}, 'songs': {},
+            'ai': {'ratings': [], 'n': 0},
             'style': {'n': 0, 'pick': {}, 'num': {}, 'bool': {}}}
 
 
@@ -56,6 +67,8 @@ class Learner:
                 d['hl']['picks'].setdefault(k, 0)
             for k, v in base['style'].items():
                 d['style'].setdefault(k, v)
+            d['ai'].setdefault('ratings', [])
+            d['ai'].setdefault('n', 0)
             return d
         except Exception:  # noqa: BLE001
             return _empty()
@@ -72,7 +85,7 @@ class Learner:
     def reset(self, part=None):
         with self.lock:
             fresh = _empty()
-            if part in ('hl', 'words', 'style'):
+            if part in ('hl', 'words', 'style', 'ai'):
                 self.d[part] = fresh[part]
                 if part == 'words':
                     self.d['songs'] = {}
@@ -203,6 +216,49 @@ class Learner:
                 out[k] = v >= 0.5
         return out
 
+    # ---------- KI-Video: Bewertungen ----------
+    def ai_feedback(self, motion, stars, tags, text, ref=''):
+        try:
+            stars = max(1, min(5, int(stars)))
+        except (TypeError, ValueError):
+            stars = 3
+        tags = [t for t in (tags or []) if t in AI_TAGS]
+        with self.lock:
+            a = self.d['ai']
+            a['ratings'].append({'motion': str(motion)[:20], 'stars': stars, 'tags': tags, 'text': str(text or '')[:300],
+                                 'ref': str(ref or '')[:120], 't': time.time()})
+            a['ratings'] = a['ratings'][-200:]
+            a['n'] += 1
+            self._save()
+
+    def ai_model(self):
+        """Gelerntes: welche Wünsche automatisch mitgegeben werden, Farbabgleich-Stärke, Noten je Bewegung."""
+        with self.lock:
+            R = json.loads(json.dumps(self.d['ai']['ratings']))
+        recent = R[-12:]
+        cnt = Counter(t for r in recent for t in r['tags'] if r['stars'] <= 3 or t == 'perfect')
+        learned = [t for t in ('face', 'flicker', 'blur') if cnt[t] >= 2]
+        if cnt['strong'] >= 2 and cnt['strong'] > cnt['weak']:
+            learned.append('strong')
+        elif cnt['weak'] >= 2 and cnt['weak'] > cnt['strong']:
+            learned.append('weak')
+        cmatch = 0.85 + (0.15 if cnt['color'] >= 2 else 0.0)
+        per = {}
+        for r in R:
+            per.setdefault(r['motion'], []).append(r['stars'])
+        scores = {m: round(sum(v) / len(v), 1) for m, v in per.items()}
+        good = [r for r in R if r['stars'] >= 4]
+        return {'n': len(R), 'learned': learned, 'extra': [AI_TAGS[t][1] for t in learned if AI_TAGS[t][1]],
+                'cmatch': cmatch, 'scores': scores, 'good': len(good),
+                'learned_names': [AI_TAGS[t][0] for t in learned] + (['Farben stärker angleichen'] if cmatch > 0.9 else [])}
+
+    @staticmethod
+    def ai_fix(tags, text):
+        """Änderungswünsche für einen neuen Versuch -> Zusätze für die KI-Beschreibung."""
+        out = [AI_TAGS[t][1] for t in (tags or []) if t in AI_TAGS and AI_TAGS[t][1]]
+        text = re.sub(r'\s+', ' ', str(text or '')).strip()[:200]
+        return out + ([text] if text else [])
+
     # ---------- Übersicht ----------
     def summary(self, defaults=None, names=None):
         names = names or {}
@@ -225,4 +281,4 @@ class Learner:
                  'top': {k: names[k].get(str(v), str(v)) for k, v in sug.items()
                          if k in names and not (k == 'vizStyle' and not sug.get('viz')) and not (k == 'fx' and v == 'none')}}
         return {'hl': hl, 'words': [w for w, _ in words[:40]], 'word_count': len(words), 'songs': songs,
-                'style': style}
+                'style': style, 'ai': self.ai_model()}

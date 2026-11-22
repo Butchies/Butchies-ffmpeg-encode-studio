@@ -42,8 +42,8 @@ MODEL = {
     'steps': 4, 'cfg': 1.0, 'sampler': 'euler', 'flow_shift': 5.0,
     'files': [  # Schlüssel, Hugging-Face-Repo, Dateimuster, ungefähre Größe (GB)
         ('diffusion', 'hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF', r'(?i)(^|/)[^/]*q4_k_m\.gguf$', 3.2),
-        ('t5', 'city96/umt5-xxl-encoder-gguf', r'(?i)(^|/)umt5-xxl-encoder-q4_k_m\.gguf$', 3.7),
-        ('vae', 'QuantStack/Wan2.2-TI2V-5B-GGUF', r'(?i)^vae/wan2\.2_vae\.safetensors$', 1.4),
+        ('t5', 'city96/umt5-xxl-encoder-gguf', r'(?i)(^|/)umt5-xxl-encoder-q4_k_m\.gguf$', 3.4),
+        ('vae', 'QuantStack/Wan2.2-TI2V-5B-GGUF', r'(?i)^vae/wan2\.2_vae\.safetensors$', 1.3),
     ],
 }
 HF = os.environ.get('BES_HF', 'https://huggingface.co')
@@ -65,10 +65,34 @@ MOTION_IDS = [m[0] for m in MOTIONS]
 STYLE_SUFFIX = 'high quality, smooth motion, consistent colors, stable composition, no text'
 
 
-def prompt_for(motion, text):
+HD = {False: (1920, 1080), True: (1080, 1920)}     # Ziel des KI-Upscalers (Full HD)
+
+
+def prompt_for(motion, text, extra=()):
+    """Beschreibung für die KI: Bewegung + eigener Text + Änderungswünsche/Gelerntes aus den Bewertungen."""
     base = dict((m[0], m[2]) for m in MOTIONS).get(motion, MOTIONS[0][2])
     text = re.sub(r'\s+', ' ', str(text or '')).strip()[:300]
-    return (base + (', ' + text if text else '') + ', ' + STYLE_SUFFIX)
+    parts = [base] + ([text] if text else []) + [e for e in extra if e] + [STYLE_SUFFIX]
+    return ', '.join(parts)
+
+
+def color_match(frames, ref, strength=0.85):
+    """Farben jedes Bildes an das Original angleichen (Lab-Mittelwert/Streuung, gleitend geglättet) –
+    verhindert den Farbsprung am Anfang und dass die Farben über viele Stücke wegdriften."""
+    if cv2 is None or strength <= 0:
+        return frames
+    r = cv2.cvtColor(ref, cv2.COLOR_BGR2LAB).astype(np.float32)
+    rm, rs = r.reshape(-1, 3).mean(0), r.reshape(-1, 3).std(0) + 1e-3
+    out, em, es = [], None, None
+    for f in frames:
+        lab = cv2.cvtColor(f, cv2.COLOR_BGR2LAB).astype(np.float32)
+        m, sd = lab.reshape(-1, 3).mean(0), lab.reshape(-1, 3).std(0) + 1e-3
+        em = m if em is None else 0.7 * em + 0.3 * m
+        es = sd if es is None else 0.7 * es + 0.3 * sd
+        fixed = (lab - em) / es * rs + rm
+        lab = lab * (1 - strength) + fixed * strength
+        out.append(cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR))
+    return out
 
 
 def gen_size(quality, vertical):
@@ -105,6 +129,7 @@ class AIVideo:
         self.lock = threading.Lock()          # nur eine KI-Rechnung gleichzeitig
         self._devices = None
         self.speed_file = self.dir / 'speed.json'
+        self.upscaler = None                 # wird vom Programm gesetzt (upscale.Upscaler)
 
     # ---------- Paket ----------
     def manifest_path(self):
@@ -323,7 +348,7 @@ class AIVideo:
         if r.returncode:
             raise RuntimeError('Stück konnte nicht gespeichert werden: ' + r.stderr.decode('utf-8', 'replace')[-200:])
 
-    def _segment(self, d, idx, init_png, prompt, seed, W, H, frames, job, p0, p1, quality):
+    def _segment(self, d, idx, init_png, prompt, seed, W, H, frames, job, p0, p1, quality, ref=None, cmatch=0.85):
         """Stück idx erzeugen (oder vom letzten Mal übernehmen). Rückgabe: Pfad letztes Bild."""
         seg = d / ('segment-%03d.mp4' % idx)
         last = d / ('segment-%03d-last.png' % idx)
@@ -332,6 +357,11 @@ class AIVideo:
         tmp = d / ('tmp-%03d' % idx)
         imgs, sec = self._run_sd(init_png, tmp, prompt, seed, W, H, frames, job, p0, p1)
         self._store_speed(quality, sec)
+        if ref is not None and cv2 is not None and cmatch > 0:
+            refimg = cv2.imdecode(np.fromfile(str(ref), np.uint8), cv2.IMREAD_COLOR)
+            fr = [cv2.imdecode(np.fromfile(str(p), np.uint8), cv2.IMREAD_COLOR) for p in imgs]
+            for p, f in zip(imgs, color_match(fr, refimg, cmatch)):
+                cv2.imencode('.png', f)[1].tofile(str(p))
         shutil.copyfile(imgs[-1], last)
         if idx == 0:
             shutil.copyfile(imgs[0], d / 'first.png')
@@ -342,6 +372,31 @@ class AIVideo:
             pass
         shutil.rmtree(tmp, ignore_errors=True)
         return last
+
+    def _upscale_segment(self, d, idx, W2, H2, job, p0, p1):
+        """Stück idx mit der KI auf Full HD hochrechnen (segment-XXX-hd.mp4, bleibt gespeichert)."""
+        src, dst = d / ('segment-%03d.mp4' % idx), d / ('segment-%03d-hd.mp4' % idx)
+        if dst.is_file():
+            return dst
+        meta = json.loads((d.parent / 'meta.json').read_text('utf-8'))
+        W, H = meta['W'], meta['H']
+        part = dst.with_suffix('.part.mp4')
+        enc = subprocess.Popen([self.ffmpeg, '-hide_banner', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', '%dx%d' % (W2, H2),
+                                '-r', str(GEN_FPS), '-i', '-', '-c:v', 'libx264', '-preset', 'medium', '-crf', '15', '-pix_fmt', 'yuv420p',
+                                str(part)], stdin=subprocess.PIPE, creationflags=self.nw)
+        frames = list(self._frames(src, W, H))
+        for k, fr in enumerate(frames):
+            if job.get('cancel'):
+                enc.kill()
+                raise RuntimeError('abgebrochen')
+            enc.stdin.write(self.upscaler.to_size(fr, W2, H2).tobytes())
+            job['percent'] = int(p0 + (p1 - p0) * (k + 1) / max(1, len(frames)))
+        enc.stdin.close()
+        enc.wait()
+        if enc.returncode:
+            raise RuntimeError('Hochrechnen fehlgeschlagen')
+        os.replace(part, dst)
+        return dst
 
     def start(self, kind, still_png, opts):
         """kind 'variants' (3 Vorschläge) oder 'full' (volle Länge mit gewählter Variante)."""
@@ -398,11 +453,21 @@ class AIVideo:
             job['state'] = 'läuft'
             try:
                 W, H, frames = gen_size(o['quality'], o['vertical'])
-                prompt = prompt_for(o['motion'], o.get('text'))
+                prompt = prompt_for(o['motion'], o.get('text'), o.get('extra') or ())
+                cm = float(o.get('cmatch', 0.85))
                 d = self.job_dir(o['key'])
                 d.mkdir(parents=True, exist_ok=True)
-                (d / 'meta.json').write_text(json.dumps({'motion': o['motion'], 'text': o.get('text', ''), 'quality': o['quality'],
-                                                         'vertical': o['vertical'], 'W': W, 'H': H, 'fmt': o.get('fmt')}), 'utf-8')
+                mf = d / 'meta.json'
+                old = {}
+                try:
+                    old = json.loads(mf.read_text('utf-8'))
+                except Exception:  # noqa: BLE001
+                    pass
+                if job['kind'] == 'full' and old.get('extra') is not None:
+                    o['extra'] = old['extra']            # gleiche Beschreibung wie bei den Varianten (Gelerntes kann sich inzwischen geändert haben)
+                    prompt = prompt_for(o['motion'], o.get('text'), o['extra'])
+                mf.write_text(json.dumps({'motion': o['motion'], 'text': o.get('text', ''), 'quality': o['quality'], 'extra': o.get('extra') or [],
+                                          'vertical': o['vertical'], 'W': W, 'H': H, 'fmt': o.get('fmt'), 'prompt': prompt}), 'utf-8')
                 init = self._prepare_init(still_png, d, W, H)
                 if job['kind'] == 'variants':
                     seeds = o.get('seeds') or [11, 222, 3333]
@@ -411,7 +476,8 @@ class AIVideo:
                         vd = d / ('seed-%d' % sd)
                         vd.mkdir(exist_ok=True)
                         job['note'] = 'Variante %d von %d wird berechnet …' % (n + 1, len(seeds))
-                        self._segment(vd, 0, init, prompt, sd, W, H, frames, job, n * 100 // len(seeds), (n + 1) * 100 // len(seeds), o['quality'])
+                        self._segment(vd, 0, init, prompt, sd, W, H, frames, job, n * 100 // len(seeds), (n + 1) * 100 // len(seeds), o['quality'],
+                                      ref=init, cmatch=cm)
                         out.append({'seed': sd, 'video': str(vd / 'segment-000.mp4')})
                     job.update(state='fertig', percent=100, note='', result={'variants': out, 'key': o['key']})
                     return
@@ -420,6 +486,8 @@ class AIVideo:
                 vd = d / ('seed-%d' % sd)
                 vd.mkdir(exist_ok=True)
                 segs = plan(float(o['length']), frames)
+                up = bool(o.get('up')) and self.upscaler is not None and self.upscaler.available()
+                share = 0.8 if up else 0.95                  # Anteil der Fortschrittsanzeige für die KI-Bewegung
                 prev = None
                 t_seg = []
                 for n, (idx, anchor) in enumerate(segs):
@@ -427,16 +495,29 @@ class AIVideo:
                     job['note'] = 'Stück %d von %d' % (n + 1, len(segs))
                     t0 = time.time()
                     already = (vd / ('segment-%03d.mp4' % idx)).is_file()
+                    a, b = n / len(segs) * 100, (n + 1) / len(segs) * 100
                     prev = self._segment(vd, idx, src, prompt, sd + idx * 7919, W, H, frames, job,
-                                         int(n * 95 / len(segs)), int((n + 1) * 95 / len(segs)), o['quality'])
+                                         int(a * share), int(a * share + (b - a) * share * (0.75 if up else 1)), o['quality'], ref=init, cmatch=cm)
+                    if up:
+                        job['note'] = 'Stück %d von %d · KI-Upscaler (Full HD)' % (n + 1, len(segs))
+                        self._upscale_segment(vd, idx, *HD[bool(o['vertical'])], job,
+                                              int(a * share + (b - a) * share * 0.75), int(b * share))
                     if not already:
                         t_seg.append(time.time() - t0)
                     if t_seg:
                         left = (len(segs) - n - 1) * (sum(t_seg) / len(t_seg))
                         job['eta'] = int(left)
                 job['note'] = 'Stücke werden zusammengesetzt …'
-                clip = vd / ('ki-video-%ds.mp4' % int(round(float(o['length']))))
-                self.assemble(vd, segs, init, clip, W, H)
+                clip = vd / ('ki-video-%ds%s.mp4' % (int(round(float(o['length']))), '-hd' if up else ''))
+                if up:
+                    W2, H2 = HD[bool(o['vertical'])]
+                    ohd = vd / 'original-hd.png'
+                    if not ohd.is_file():
+                        org = cv2.cvtColor(cv2.imdecode(np.fromfile(str(init), np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+                        cv2.imencode('.png', cv2.cvtColor(self.upscaler.to_size(org, W2, H2), cv2.COLOR_RGB2BGR))[1].tofile(str(ohd))
+                    self.assemble(vd, segs, ohd, clip, W2, H2, suffix='-hd')
+                else:
+                    self.assemble(vd, segs, init, clip, W, H)
                 job.update(state='fertig', percent=100, note='', eta=0,
                            result={'clip': clip.relative_to(self.jobs_dir).as_posix(), 'seconds': self.duration(clip), 'key': o['key'], 'seed': sd})
             except Exception as ex:  # noqa: BLE001
@@ -454,7 +535,7 @@ class AIVideo:
             yield np.frombuffer(b, np.uint8).reshape(H, W, 3)
         p.wait()
 
-    def assemble(self, vd, segs, init_png, out_mp4, W, H):
+    def assemble(self, vd, segs, init_png, out_mp4, W, H, suffix=''):
         enc = subprocess.Popen([self.ffmpeg, '-hide_banner', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', '%dx%d' % (W, H),
                                 '-r', str(GEN_FPS), '-i', '-', '-c:v', 'libx264', '-preset', 'medium', '-crf', '15', '-pix_fmt', 'yuv420p',
                                 '-movflags', '+faststart', str(out_mp4)], stdin=subprocess.PIPE, creationflags=self.nw)
@@ -467,7 +548,7 @@ class AIVideo:
                 enc.stdin.write(tail.pop(0).tobytes())
 
         for n, (idx, anchor) in enumerate(segs):
-            frames = self._frames(vd / ('segment-%03d.mp4' % idx), W, H)
+            frames = self._frames(vd / ('segment-%03d%s.mp4' % (idx, suffix)), W, H)
             if n and anchor:                        # weich vom bisherigen Verlauf zurück zum Original-Start überblenden
                 head = [next(frames) for _ in range(XFADE)]
                 for k, (a, b) in enumerate(zip(tail, head)):
@@ -498,7 +579,7 @@ class AIVideo:
 
     def clip_path(self, rel):
         """Sicherer Pfad zu einem fertigen KI-Video (nur innerhalb des jobs-Ordners)."""
-        if not rel or not re.fullmatch(r'[0-9a-f]{16}/seed-\d+/(ki-video-\d+s|segment-000)\.mp4', str(rel)):
+        if not rel or not re.fullmatch(r'[0-9a-f]{16}/seed-\d+/(ki-video-\d+s(-hd)?|segment-000)\.mp4', str(rel)):
             return None
         p = self.jobs_dir / rel
         return p if p.is_file() else None
@@ -513,9 +594,11 @@ class AIVideo:
             sd = int(vd.name[5:])
             if (vd / 'segment-000.mp4').is_file():
                 out['variants'].append({'seed': sd, 'video': (vd / 'segment-000.mp4').relative_to(self.jobs_dir).as_posix()})
-            for c in vd.glob('ki-video-*s.mp4'):
-                out['clips'].append({'seed': sd, 'clip': c.relative_to(self.jobs_dir).as_posix(), 'seconds': int(c.stem[9:-1])})
-            n = len(list(vd.glob('segment-*.mp4')))
+            for c in vd.glob('ki-video-*.mp4'):
+                m = re.fullmatch(r'ki-video-(\d+)s(-hd)?', c.stem)
+                if m:
+                    out['clips'].append({'seed': sd, 'clip': c.relative_to(self.jobs_dir).as_posix(), 'seconds': int(m.group(1)), 'hd': bool(m.group(2))})
+            n = len([p for p in vd.glob('segment-*.mp4') if re.fullmatch(r'segment-\d+', p.stem)])
             if n > 1:
                 out['partial'].append({'seed': sd, 'segments': n})
         return out

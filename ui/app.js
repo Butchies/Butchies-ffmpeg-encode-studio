@@ -13,7 +13,8 @@ const THEMES = [
   ['emerald', 'Smaragd', 'Frisches Grün', '#04110c', '#2fd38f', '#a3e635', 'studio', "'Space Grotesk'"],
   ['gold', 'Gold Lounge', 'Edel & dunkel', '#0d0a05', '#f5b544', '#ffdf8a', 'lounge', "'Cormorant Garamond'"],
   ['mono', 'Mitternacht', 'Schwarz-Weiß', '#0a0a0a', '#e5e5e5', '#9ca3af', 'index', "'Archivo Black'"],
-  ['light', 'Hell', 'Für den Tag', '#f6f2fb', '#7c3aed', '#db2777', 'tag', 'Manrope']
+  ['light', 'Hell', 'Für den Tag', '#f6f2fb', '#7c3aed', '#db2777', 'tag', 'Manrope'],
+  ['bluewhite', 'Blau-Weiß', 'Klar & frisch', '#ffffff', '#1668e3', '#38a3ff', 'klar', 'Outfit']
 ];
 const FORMATS = [
   ['yt4k', 'YouTube 4K', '3840 × 2160 · 16:9', false, true],
@@ -104,7 +105,7 @@ function openThemes() {
   const grid = $('#themeGrid'); grid.textContent = '';
   for (const [id, name, sub, bg, a, b, , font] of THEMES) {
     grid.append(el('button', {
-      type: 'button', class: 'theme-opt' + (id === 'light' ? ' is-light' : ''), 'aria-pressed': String(id === S.theme),
+      type: 'button', class: 'theme-opt' + (id === 'light' || id === 'bluewhite' ? ' is-light' : ''), 'aria-pressed': String(id === S.theme),
       style: `--tbg:${bg};--ta:${a};--tb:${b};--tf:${font}`,
       onclick: e => { applyTheme(id, true); $$('.theme-opt', grid).forEach(x => x.setAttribute('aria-pressed', String(x === e.currentTarget))) }
     }, el('div', { class: 'sw' }), el('b', {}, name), el('small', {}, sub), el('span', { class: 'tick', html: ICON.check })));

@@ -14,6 +14,7 @@ import highlight
 import lyrics
 import learn
 import aivideo
+import upscale
 try:
     import mark          # braucht numpy + OpenCV (+ onnxruntime für die KI)
 except Exception:  # noqa: BLE001
@@ -95,7 +96,7 @@ DEFAULTS = {'fmt': 'yt4k', 'fps': 30, 'fadeIn': 2.0, 'fadeOut': 3.0, 'color': 'b
             'transIn': 'fade', 'transOut': 'fade', 'shortLen': 60, 'shortLyrics': False,
             # KI-Video (1.8.0)
             'ai': False, 'aiClip': '', 'aiArea': 'full', 'aiMask': '', 'aiFeather': 1.5, 'aiMotion': 'hair', 'aiText': '',
-            'aiLen': 30, 'aiQual': 'fast'}
+            'aiLen': 30, 'aiQual': 'fast', 'aiUp': True}
 AI_LENS = (10, 30, 60, 120, 0)      # Sekunden; 0 = ganzer Song
 DEFAULTS.update(viz.DEFAULTS)
 DEFAULTS.update(fx.DEFAULTS)
@@ -133,6 +134,8 @@ def find_tool(name):
 
 FFMPEG = find_tool('ffmpeg')
 AIV = aivideo.AIVideo(HOME, APP_DIR, BASE, FFMPEG, NO_WINDOW)     # KI-Video (freiwilliges Zusatz-Paket)
+UPS = upscale.Upscaler(MODEL_DIR)                                # KI-Upscaler (Full HD)
+AIV.upscaler = UPS
 import atexit
 atexit.register(AIV.shutdown)
 FFPROBE = find_tool('ffprobe')
@@ -324,6 +327,7 @@ def clean_settings(s):
         out['aiLen'] = 30
     if out['aiQual'] not in aivideo.QUALITIES:
         out['aiQual'] = 'fast'
+    out['aiUp'] = bool(out['aiUp'])
     viz.clean(s, out)
     fx.clean(s, out)
     # Markierungen aus einer früheren Sitzung (Maske nicht mehr vorhanden) zurücksetzen
@@ -546,15 +550,15 @@ def ai_graph(s, w, h, fps, vid, parts, idx, mark_dir, tag):
 IMG_HASH = {}
 
 
-def ai_key(img, s):
+def ai_key(img, s, fix=''):
     """Kennung für Bild + Zuschnitt + Format + Bewegung (gleiche Kennung = vorhandene Stücke wiederverwenden)."""
     p = Path(img['path'])
     k = (str(p), p.stat().st_mtime)
     if k not in IMG_HASH:
         import hashlib
         IMG_HASH[k] = hashlib.sha1(p.read_bytes()).hexdigest()
-    return aivideo.AIVideo.key(('%s|%s' % (IMG_HASH[k], s['fit'])).encode(), s['aiQual'], s['aiMotion'], s['aiText'],
-                               bool(FORMATS[s['fmt']][3]))
+    return aivideo.AIVideo.key(('%s|%s' % (IMG_HASH[k], s['fit'])).encode(), s['aiQual'], s['aiMotion'],
+                               s['aiText'] + ('|' + fix if fix else ''), bool(FORMATS[s['fmt']][3]))
 
 
 def ai_length(s, audio):
@@ -1422,20 +1426,30 @@ class Handler(BaseHTTPRequestHandler):
                 if not img:
                     return self.send_json(400, {'error': 'Bitte zuerst ein Bild laden.'})
                 st = clean_settings(data.get('settings'))
-                key = ai_key(img, st)
+                fix_tags = [t for t in (data.get('fix_tags') or []) if t in learn.AI_TAGS]
+                fix_text = re.sub(r'\s+', ' ', str(data.get('fix_text') or '')).strip()[:200]
+                fix = ','.join(sorted(fix_tags)) + ('|' + fix_text if fix_text else '')
+                key = ai_key(img, st, fix)
                 length = ai_length(st, STAGED.get(data.get('audio') or ''))
                 if path == '/api/ai/info':
                     return self.send_json(200, {'key': key, 'have': AIV.clips(key), 'length': length,
                                                 'estimate': AIV.estimate(st['aiQual'], length),
-                                                'estimate_variants': AIV.estimate(st['aiQual'], 1)})
+                                                'estimate_variants': AIV.estimate(st['aiQual'], 1),
+                                                'learned': LEARN.ai_model(), 'upscaler': UPS.available()})
                 kind = 'full' if data.get('kind') == 'full' else 'variants'
                 try:
+                    lm = LEARN.ai_model()
                     jid = AIV.start(kind, ai_still(img, st), {
                         'key': key, 'quality': st['aiQual'], 'motion': st['aiMotion'], 'text': st['aiText'], 'fmt': st['fmt'],
-                        'vertical': bool(FORMATS[st['fmt']][3]), 'seed': int(data.get('seed') or 11), 'length': length})
+                        'vertical': bool(FORMATS[st['fmt']][3]), 'seed': int(data.get('seed') or 11), 'length': length,
+                        'extra': lm['extra'] + learn.Learner.ai_fix(fix_tags, fix_text), 'cmatch': lm['cmatch'],
+                        'up': st['aiUp'] and UPS.available()})
                 except RuntimeError as ex:
                     return self.send_json(400, {'error': str(ex)})
                 return self.send_json(200, {'id': jid, 'key': key})
+            if path == '/api/ai/feedback':
+                LEARN.ai_feedback(data.get('motion'), data.get('stars'), data.get('tags'), data.get('text'), data.get('ref'))
+                return self.send_json(200, {'learned': LEARN.ai_model()})
             if path == '/api/learn/hl':
                 LEARN.hl_pick(data.get('kind'), data.get('feat'))
                 return self.send_json(200, {'ok': True})

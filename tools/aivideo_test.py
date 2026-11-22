@@ -13,8 +13,10 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import aivideo  # noqa: E402
+import upscale  # noqa: E402
 
 sd, ffmpeg, out = sys.argv[1], sys.argv[2], Path(sys.argv[3])
+UPDIR = sys.argv[sys.argv.index('--upscaler') + 1] if '--upscaler' in sys.argv else None
 out.mkdir(parents=True, exist_ok=True)
 log = []
 
@@ -110,11 +112,32 @@ cv2.imwrite(str(out / 'bilder.png'), cv2.cvtColor(sheet, cv2.COLOR_RGB2BGR))
 for p in (home / 'aivideo' / 'jobs').rglob('*.mp4'):
     (out / ('video-' + p.parent.name + '-' + p.name)).write_bytes(p.read_bytes())
 (out / 'ergebnis.txt').write_text('\n'.join(log), 'utf-8')
+# KI-Upscaler: Full-HD-Lauf mit Hochrechnung je Stück + Schärfevergleich
+if UPDIR:
+    U = upscale.Upscaler(UPDIR)
+    A.upscaler = U
+    say('Upscaler verfügbar:', U.available())
+    t0 = time.time()
+    v = wait(A.start('full', still, dict(opts, up=True)))
+    say('Volle Länge mit Upscaler:', v['state'], v['error'], v.get('result'), 'in %d s' % (time.time() - t0), 'Gerät:', U.device)
+    if v['state'] != 'fertig' or not v['result']['clip'].endswith('-hd.mp4'):
+        raise SystemExit('Upscaler-Lauf fehlgeschlagen')
+    hd = list(A._frames(A.clip_path(v['result']['clip']), 1920, 1080))
+    say('HD-Bilder:', len(hd), hd[0].shape)
+    small = cv2.cvtColor(cv2.resize(img, (480, 270), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB)
+    t0 = time.time()
+    ki = U.to_size(small, 1920, 1080)
+    say('Upscaler 480x270 -> 1920x1080 in %.2f s' % (time.time() - t0))
+    bic = cv2.resize(small, (1920, 1080), interpolation=cv2.INTER_CUBIC)
+    sharp = lambda a: float(cv2.Laplacian(cv2.cvtColor(a, cv2.COLOR_RGB2GRAY), cv2.CV_64F).var())
+    say('Schärfe KI %.1f · normal %.1f' % (sharp(ki), sharp(bic)))
+    cv2.imwrite(str(out / 'upscaler.png'), cv2.cvtColor(np.hstack([bic[300:780, 400:1100], ki[300:780, 400:1100]]), cv2.COLOR_RGB2BGR))
+
 # Qualitätsblick in echter Größe (832 × 480, kurz): einzelne Bilder fürs Auge
 if '--quality' in sys.argv:
-    aivideo.QUALITIES['q'] = (832, 480, 17, 900)
+    aivideo.QUALITIES['q'] = (832, 480, 9, 900)
     t0 = time.time()
-    v = wait(A.start('variants', still, dict(opts, key='fedcba9876543210', quality='q', seeds=[7])))
+    v = wait(A.start('variants', still, dict(opts, key='fedcba9876543210', quality='q', seeds=[7], cmatch=0.85)))
     say('Qualitätsblick 832x480:', v['state'], v['error'], 'in %d s' % (time.time() - t0))
     if v['state'] == 'fertig':
         fr = list(A._frames(A.jobs_dir / 'fedcba9876543210' / 'seed-7' / 'segment-000.mp4', 832, 480))
