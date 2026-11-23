@@ -16,6 +16,7 @@ import learn
 import aivideo
 import upscale
 import hwinfo
+import tuner as tunerlib
 try:
     import mark          # braucht numpy + OpenCV (+ onnxruntime für die KI)
 except Exception:  # noqa: BLE001
@@ -23,7 +24,7 @@ except Exception:  # noqa: BLE001
 
 APP_NAME = 'ffmpeg_encode Studio'
 APP_DIRNAME = 'ffmpeg_encode Studio'      # Ordnername für Einstellungen/Videos bleibt (deine Daten bleiben erhalten)
-VERSION = '1.9.0'
+VERSION = '1.10.0'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -1133,9 +1134,11 @@ def hw_analyze(force=False):
               'te': gen if gen not in ('cpu', 'auto') and vram >= 12 else 'cpu',
               'decode_frames': 2 if vram >= 12 else 1,
               'parallel': bool(upg and gmain and upg['name'] != gmain['name']),
-              'server': ch.get('server', True)}
+              'server': ch.get('server', True), 'vendor': gmain['vendor'] if gmain else 'cpu', 'vram': vram}
     UPS.set_device(up if up in ('cpu',) else int(up) if str(up).lstrip('-').isdigit() else -1)
-    out = dict(d, choice=ch, active=dict(AIV.hw, up=up, gen_name=gmain['name'] if gmain else ('Prozessor' if gen == 'cpu' else 'automatisch'),
+    rid = AIV.pick_recipe('fast')
+    out = dict(d, choice=ch, tuner=AIV.tuner.summary(), recipe=rid, recipe_name=tunerlib.RECIPES[rid]['name'],
+               active=dict(AIV.hw, up=up, gen_name=gmain['name'] if gmain else ('Prozessor' if gen == 'cpu' else 'automatisch'),
                                          up_name=upg['name'] if upg else ('Prozessor' if up == 'cpu' else 'automatisch')),
                server_ok=bool(AIV.server_exe), server_error=AIV.server_error, upscaler=UPS.available(), ai_ready=AIV.ready())
     return out
@@ -1560,6 +1563,16 @@ class Handler(BaseHTTPRequestHandler):
                     h['server'] = bool(data['server'])
                 save_config(conf)
                 return self.send_json(200, hw_analyze())
+            if path == '/api/ai/train':
+                hw_analyze()
+                try:
+                    jid = AIV.start_training('good' if data.get('quality') == 'good' else 'fast')
+                except RuntimeError as ex:
+                    return self.send_json(400, {'error': str(ex)})
+                return self.send_json(200, {'id': jid})
+            if path == '/api/ai/tuner-reset':
+                AIV.tuner.reset()
+                return self.send_json(200, hw_analyze())
             if path == '/api/hw/refresh':
                 AIV._devices = None
                 return self.send_json(200, hw_analyze(True))
@@ -1624,6 +1637,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {'id': jid, 'key': key})
             if path == '/api/ai/feedback':
                 LEARN.ai_feedback(data.get('motion'), data.get('stars'), data.get('tags'), data.get('text'), data.get('ref'))
+                try:
+                    AIV.tuner.learn_quality(AIV.quality_of(str(data.get('ref') or '')), int(data.get('stars') or 3))
+                except (ValueError, OSError):
+                    pass
                 return self.send_json(200, {'learned': LEARN.ai_model()})
             if path == '/api/learn/hl':
                 LEARN.hl_pick(data.get('kind'), data.get('feat'))

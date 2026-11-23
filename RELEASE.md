@@ -1,4 +1,4 @@
-**ffmpeg_encode Studio 1.9.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
+**ffmpeg_encode Studio 1.10.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
 
 **Installieren:** `ffmpeg_encode_Studio-Setup.exe` herunterladen und starten. Es werden keine Administratorrechte gebraucht.
 FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingerichtet.
@@ -9,6 +9,14 @@ FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingeric
 - Audio-Visualizer (Wellenform/Spektrum) in Design- oder eigener Farbe
 - Grafikkarte automatisch (NVIDIA NVENC, Intel Quick Sync, AMD AMF), sonst CPU – mit automatischem Rückfall
 - Fortschritt in Prozent, Warteschlange, 7 Designs und Start-/Abschieds-Animation der Butchies-Webseite
+
+**Neu in 1.10.0 – die KI optimiert sich selbst**
+- **KI-Training** (⚙️ Einstellungen → 🧠 KI-Hardware): probiert alle Tempo-Einstellungen des KI-Motors (Flash-Attention, Direkt-Faltung, Text-Teil auf Karte/Prozessor, Auslagern) mit einem echten Stück auf deiner Grafikkarte aus und nimmt danach immer die schnellste, die sicher läuft
+- **Gedächtnis:** jede KI-Rechnung misst mit – die KI wird mit der Zeit genauer, auch ohne Training
+- **Weicht selbst aus:** reicht der Grafikspeicher nicht, merkt sich die KI das, rechnet das Stück automatisch mit einer sichereren Einstellung neu und macht es beim nächsten Mal gleich richtig
+- **🤖 KI-Tipp bei den Varianten:** jede Variante bekommt eine Note (Schärfe, wenig Flackern, Bewegung, nah am Original); die beste wird vorgewählt. Aus deinen Sternen lernt die KI, was dir wichtig ist
+- Vorwissen eingebaut: sinnvolle Startwerte je Grafikkarten-Hersteller, bevor auf deinem PC gemessen wurde
+- Fehler behoben: Stürzte die KI wegen Grafikspeicher sofort ab, kam nur „Verbindung getrennt“ statt einer klaren Meldung
 
 **Neu in 1.9.0 – KI-Hardware-Analyse, schnellere KI, Updater**
 - **KI-Hardware-Analyse** (⚙️ Einstellungen → 🧠 KI-Hardware): erkennt Prozessor, Arbeitsspeicher und alle Grafikkarten und verteilt die Arbeit – KI-Bewegung auf der stärksten Karte, KI-Upscaler **gleichzeitig** auf der zweiten (z. B. RX 7600M XT + Radeon 760M). Auch von Hand wählbar

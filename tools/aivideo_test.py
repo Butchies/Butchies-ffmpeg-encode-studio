@@ -159,6 +159,15 @@ if A.server_exe:
     t0 = time.time()
     v = wait(A.start('variants', still, dict(opts, key='0123456789abcd00', seeds=[5])))
     say('Gleiches Stück über sd-cli (lädt neu):', v['state'], 'in %d s' % (time.time() - t0), '· Tempo je Stück:', A.speeds())
-ok = bench_ok and corr > 0.5 and motion > 0.2 and flat > 3
+# 1.10.0 Tempo-Training (prüft auch, dass alle Schalter vom echten KI-Motor angenommen werden)
+A.hw = dict(A.hw, server=True, gen='cpu', vendor='cpu', vram=0)
+t0 = time.time()
+v = wait(A.start_training('test'))
+say('Training:', v['state'], v['error'], v.get('result'), 'in %d s' % (time.time() - t0))
+say('Gedächtnis:', json.dumps(A.tuner.summary(), ensure_ascii=False))
+q = A.quality_of('0123456789abcdef/seed-11')
+say('Qualitäts-Messwerte:', q, 'Note:', A.tuner.score(q))
+train_ok = v['state'] == 'fertig' and any(isinstance(x, float) for x in v['result']['recipes'].values())
+ok = bench_ok and train_ok and corr > 0.5 and motion > 0.2 and flat > 3
 say('ERGEBNIS:', 'OK' if ok else 'AUFFÄLLIG')
 sys.exit(0 if ok else 2)

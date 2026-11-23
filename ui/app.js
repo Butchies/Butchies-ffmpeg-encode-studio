@@ -1302,7 +1302,8 @@ function renderAi() {
     vid.muted = true; vid.addEventListener('mouseenter', () => vid.play().catch(() => {})); vid.addEventListener('mouseleave', () => vid.pause());
     if (sel) setTimeout(() => vid.play().catch(() => {}), 50);
     vb.append(el('div', { class: 'ai-var' + (sel ? ' sel' : ''), onclick: () => { AI.seed = v.seed; AI.view = v.video; renderAi() } }, vid,
-      el('span', {}, sel ? '✓ Ausgewählt' : 'Diese nehmen', el('small', {}, '#' + v.seed))));
+      inf.have.tip === v.seed ? el('b', { class: 'ai-tip', title: 'Die KI hält diese Variante für die beste (Schärfe, wenig Flackern, nah am Original) – lernt aus deinen Sternen' }, '🤖 KI-Tipp') : null,
+      el('span', {}, sel ? '✓ Ausgewählt' : 'Diese nehmen', el('small', {}, '#' + v.seed + (v.score ? ' · Note ' + String(v.score).replace('.', ',') : '')))));
   }
   // Schritt 2: volle Länge
   const have = inf && inf.have.clips.find(c => c.seed === AI.seed && (c.seconds === (s.aiLen || Math.round(inf.length))));
@@ -1450,7 +1451,7 @@ function aiPollJob() {
     if (j.state === 'läuft' || j.state === 'wartet') { aiPollJob(); return }
     AI.job = ''; $('#aiProg').hidden = true;
     if (j.state === 'fertig' && j.result) {
-      if (AI.jobKind === 'variants') { toast('✓ 3 Varianten fertig – wähle die schönste aus'); if (!AI.seed) AI.seed = j.result.variants[0].seed }
+      if (AI.jobKind === 'variants') { toast('✓ 3 Varianten fertig – wähle die schönste aus'); if (!AI.seed) AI.seed = j.result.variants[Math.max(0, j.result.tip)].seed }
       else { aiPatch({ aiClip: j.result.clip, ai: true }); AI.view = j.result.clip; toast('✓ KI-Video ist fertig und wird beim Umwandeln verwendet') }
     } else if (j.state === 'fehler') ask('KI-Video', j.error || 'Unbekannter Fehler', 'OK');
     aiInfo(); refreshAi();
@@ -2288,6 +2289,34 @@ async function drawHw(box, fresh) {
   };
   box.append(lnCard('⏱️ Schnelltest', '', el('p', {}, h.ai_ready ? 'Misst jede Grafikkarte mit einem kleinen KI-Stück und dem Upscaler (dauert ein paar Minuten). Danach nimmt „Automatisch“ die wirklich schnellste Karte.' : 'Erst das KI-Video-Paket laden (Karte „KI-Video“), dann kann getestet werden.'),
     el('div', { class: 'ln-acts' }, bt, el('button', { type: 'button', class: 'btn small', onclick: async () => { const f = await api('/api/hw/refresh', {}); $('#setBody').textContent = ''; drawHw($('#setBody'), f) } }, 'Neu erkennen')), bp));
+  // 1.10.0: Training + Gedächtnis
+  const T = h.tuner || { speed: [], ratings: 0 };
+  const qn = { fast: 'Schnell', good: 'Beste Qualität', test: 'Test' };
+  const rows = T.speed.filter(r => r.best).map(r => el('p', {}, `• ${qn[r.quality] || r.quality} auf ${(h.gpus.find(g => g.vulkan === r.gen) || {}).name || (r.gen === 'cpu' ? 'Prozessor' : r.gen)}: bestes Rezept „${r.best_name}“ – ${String(r.spf).replace('.', ',')} s je Bild` +
+    (r.worst_spf > r.spf * 1.05 ? ` (${Math.round((1 - r.spf / r.worst_spf) * 100)} % schneller als das langsamste)` : '') + (r.oom.length ? ` · ${r.oom.length}× Speicher zu knapp – gemieden` : '')));
+  const tp = el('div', { hidden: true }, el('div', { class: 'set-prog' }, el('i')), el('p', {}, ''));
+  const train = q => async () => {
+    try { const r = await api('/api/ai/train', { quality: q }); tp.hidden = false;
+      clearInterval(SET.benchPoll);
+      SET.benchPoll = setInterval(async () => {
+        const v = await api('/api/ai/job/' + r.id).catch(() => null); if (!v) return;
+        tp.querySelector('i').style.width = v.percent + '%'; tp.querySelector('p').textContent = `${v.percent} % · ${v.note || ''}`;
+        if (!['läuft', 'wartet'].includes(v.state)) {
+          clearInterval(SET.benchPoll); SET.benchPoll = 0;
+          if (v.state === 'fertig') toast(`✓ Training fertig – ab jetzt: „${v.result.best_name}“`); else toast(v.error || 'Training abgebrochen', true);
+          if ($('#setDlg').open && SET.tab === 'hw') { const f = await api('/api/hw'); $('#setBody').textContent = ''; drawHw($('#setBody'), f) }
+        }
+      }, 1000);
+    } catch (e) { toast(e.message, true) }
+  };
+  box.append(lnCard('🏋️ KI-Training & Gedächtnis', '',
+    el('p', {}, `Die KI merkt sich, wie sie auf deinem PC am schnellsten läuft (Rezept gerade: „${h.recipe_name || 'Standard'}“), weicht bei zu wenig Grafikspeicher selbst aus und lernt aus deinen Sternen, welche Varianten gut aussehen (${T.ratings} Bewertungen, „🤖 KI-Tipp“ bei den Varianten).`),
+    ...(rows.length ? rows : [el('p', { class: 'hint' }, 'Noch nichts gemessen – starte das Training oder rechne einfach los, die KI lernt bei jedem Stück mit.')]),
+    el('div', { class: 'ln-acts' },
+      el('button', { type: 'button', class: 'btn small glow', disabled: !h.ai_ready, onclick: train('fast') }, 'Training „Schnell“'),
+      el('button', { type: 'button', class: 'btn small', disabled: !h.ai_ready, onclick: train('good') }, 'Training „Beste Qualität“'),
+      el('button', { type: 'button', class: 'btn small', onclick: async () => { if (!await ask('Gedächtnis zurücksetzen?', 'Alle gemessenen Tempo-Werte und gelernten Qualitäts-Vorlieben werden gelöscht.', 'Zurücksetzen')) return; const f = await api('/api/ai/tuner-reset', {}); $('#setBody').textContent = ''; drawHw($('#setBody'), f) } }, 'Zurücksetzen')),
+    el('p', { class: 'hint' }, 'Training: probiert jede Einstellung einmal mit einem echten Stück aus (dauert je nach Karte ca. 5–20 Minuten). Danach nimmt die KI immer die schnellste, die sicher läuft.'), tp));
 }
 async function drawMem(box) {
   const st = await api('/api/settings'); const ai = st.ai;

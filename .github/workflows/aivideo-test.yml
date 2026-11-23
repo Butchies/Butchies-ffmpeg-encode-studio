@@ -12,6 +12,7 @@ on:
       - 'tools/make_upscaler.py'
       - 'upscale.py'
       - 'hwinfo.py'
+      - 'tuner.py'
       - '.github/workflows/aivideo-test.yml'
 
 permissions:

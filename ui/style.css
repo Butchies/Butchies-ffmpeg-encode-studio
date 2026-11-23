@@ -779,3 +779,5 @@ body.kiwin .brand small{display:none}
 .ai-hwline{margin-top:6px;font-size:11.5px;color:var(--muted)}
 .ai-hwline a{color:var(--a);cursor:pointer;text-decoration:underline}
 .set-row + .set-row{margin-top:12px}
+.ai-var{position:relative}
+.ai-tip{position:absolute;top:6px;left:6px;z-index:2;padding:2px 8px;border-radius:99px;font-size:10.5px;color:var(--on);background:linear-gradient(90deg,var(--a),var(--b));pointer-events:none}

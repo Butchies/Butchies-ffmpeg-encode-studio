@@ -19,6 +19,7 @@ Ablauf
   KI-Upscaler gleichzeitig auf der zweiten Karte (eigener Arbeitsfaden, rechnet Stück n während Stück n+1 entsteht).
 """
 import base64
+import tuner as tunerlib
 import queue
 import socket
 import hashlib
@@ -180,7 +181,16 @@ class SdServer:
         raise RuntimeError('KI-Dienst startet nicht (Zeit überschritten)')
 
     def generate(self, body, job, prog):
-        r = self._req('/sdcpp/v1/vid_gen', body, timeout=120)
+        try:
+            r = self._req('/sdcpp/v1/vid_gen', body, timeout=120)
+        except Exception as ex:  # noqa: BLE001  – Dienst beim Auftrag abgestürzt (oft Grafikspeicher)
+            for _ in range(20):
+                if not self.alive():
+                    break
+                time.sleep(0.25)
+            if OOM.search(self.tail()):
+                raise RuntimeError('Der Grafikspeicher reicht nicht – bitte „Schnell“ wählen oder andere Programme schließen.')
+            raise RuntimeError('Die KI hat den Auftrag nicht angenommen: %s' % ex)
         jid = r.get('id')
         if not jid:
             raise RuntimeError('KI-Dienst hat den Auftrag abgelehnt: %s' % (r.get('error') or r))
@@ -233,6 +243,8 @@ class AIVideo:
         self.dir = Path(home).resolve() / 'aivideo'
         self.models = Path(os.environ.get('BES_AIMODELS') or (self.dir / 'models')).resolve()
         self.jobs_dir = self.dir / 'jobs'
+        self.tuner = tunerlib.Tuner(self.dir / 'tuner.json')     # 1.10.0: Gedächtnis für Tempo + Qualität
+        self.active_rid = None                                    # Rezept des laufenden Auftrags
         self.ffmpeg = ffmpeg
         self.nw = no_window
         cands = [os.environ.get('BES_SDCLI') or '']
@@ -357,6 +369,83 @@ class AIVideo:
         self.dl = {'state': 'idle', 'percent': 0, 'error': '', 'done_gb': 0.0, 'total_gb': 0.0}
 
     # ---------- Geräte / Tempo ----------
+    def quality_of(self, ref):
+        """Qualitäts-Messwerte zu einem Clip/Ordner (für die Note und das Lernen aus Sternen)."""
+        p = Path(ref)
+        if not p.is_absolute():
+            p = self.jobs_dir / p
+        for c in (p, p.parent):
+            try:
+                return json.loads((c / 'quality.json').read_text('utf-8')).get('f') or {}
+            except Exception:  # noqa: BLE001
+                pass
+        return {}
+
+    def start_training(self, quality='fast'):
+        """Tempo-Training: jedes Rezept einmal mit einem echten Stück (Größe der Qualität, 33 Bilder) messen."""
+        if not self.ready():
+            raise RuntimeError('Für das Training muss das KI-Video-Paket installiert sein.')
+        jid = hashlib.sha1(('%s train' % time.time()).encode()).hexdigest()[:10]
+        job = {'id': jid, 'kind': 'bench', 'state': 'wartet', 'percent': 0, 'error': '', 'note': '', 'result': None,
+               'cancel': False, 'proc': None, 'started': time.time()}
+        self.jobs[jid] = job
+        threading.Thread(target=self._train, args=(job, quality), daemon=True).start()
+        return jid
+
+    def _train(self, job, quality):
+        with self.lock:
+            job['state'] = 'läuft'
+            hw = dict(self.hw)
+            gen = hw.get('gen') or 'auto'
+            res = {}
+            try:
+                W, H = QUALITIES[quality][:2]
+                d = (self.dir / 'train').resolve()
+                d.mkdir(parents=True, exist_ok=True)
+                init = d / 'start.png'
+                img = np.zeros((H, W, 3), np.uint8)
+                img[:] = (70, 50, 120)
+                if cv2 is not None:
+                    cv2.circle(img, (W // 2, H // 2), H // 3, (150, 190, 235), -1)
+                    cv2.GaussianBlur(img, (0, 0), 3, dst=img)
+                    cv2.imencode('.png', img)[1].tofile(str(init))
+                cands = self.tuner.candidates(hw.get('vendor') or 'amd', float(hw.get('vram') or 0), gen)
+                for n, rid in enumerate(cands):
+                    if job['cancel']:
+                        raise RuntimeError('abgebrochen')
+                    job['note'] = 'Training %d von %d: %s' % (n + 1, len(cands), tunerlib.RECIPES[rid]['name'])
+                    if self.server:
+                        self.server.stop()
+                        self.server = None
+                    h2 = dict(hw, recipe=rid)
+                    try:
+                        # erst laden (kurzes Stück, nicht gemessen), dann messen
+                        self._run_sd(init, d / 'f', 'gentle motion, calm', 1, W, H, 9, job, n * 100 // len(cands), n * 100 // len(cands), hw=h2)
+                        t0 = time.time()
+                        self._run_sd(init, d / 'f', 'gentle motion, hair moving in the wind', 2, W, H, 33, job,
+                                     n * 100 // len(cands), (n + 1) * 100 // len(cands), hw=h2)
+                        spf = (time.time() - t0) / 33
+                        if self.server is None:      # sd-cli: Ladezeit steckt mit drin -> nur grob
+                            spf *= 0.6
+                        self.tuner.record(gen, quality, rid, sec_per_frame=spf)
+                        res[rid] = round(spf, 3)
+                    except RuntimeError as ex:
+                        if job['cancel']:
+                            raise
+                        oom = 'Grafikspeicher' in str(ex)
+                        self.tuner.record(gen, quality, rid, oom=oom, fail=not oom)
+                        res[rid] = 'Speicher reicht nicht' if oom else 'Fehler'
+                    job['percent'] = (n + 1) * 100 // len(cands)
+                if self.server:
+                    self.server.stop()
+                    self.server = None
+                self.tuner.mark_trained(gen)
+                shutil.rmtree(d, ignore_errors=True)
+                best = self.tuner.best(gen, quality, hw.get('vendor') or 'amd', float(hw.get('vram') or 0))
+                job.update(state='fertig', percent=100, note='', result={'recipes': res, 'best': best, 'best_name': tunerlib.RECIPES[best]['name']})
+            except Exception as ex:  # noqa: BLE001
+                job.update(state='abgebrochen' if job['cancel'] else 'fehler', error=str(ex), result={'recipes': res})
+
     def cache_info(self):
         """Größe des KI-Zwischenspeichers (fertige Stücke/Clips) in GB."""
         tot = 0
@@ -424,16 +513,12 @@ class AIVideo:
     def backend_args(self, hw=None):
         """--backend aus der Hardware-Analyse: Bewegung+VAE auf einer Karte, Text-Teil (umT5) auf Prozessor/Karte."""
         hw = self.hw if hw is None else hw
-        g, te = (hw.get('gen') or 'auto'), (hw.get('te') or 'cpu')
-        out = []
-        if g == 'cpu':
-            out += ['--backend', 'cpu']
-        elif g != 'auto':
-            out += ['--backend', 'diffusion=%s,vae=%s,te=%s' % (g, g, te)]
-        n = int(hw.get('decode_frames') or 1)
-        if n > 1:
-            out += ['--extra-tiling-args', 'temporal_decode_frames=%d' % n]
-        return out
+        rid = hw.get('recipe') or self.active_rid or 'standard'
+        return tunerlib.recipe_args(rid, hw.get('gen') or 'auto', float(hw.get('vram') or 0))
+
+    def pick_recipe(self, quality, hw=None):
+        hw = self.hw if hw is None else hw
+        return self.tuner.best(hw.get('gen') or 'auto', quality, hw.get('vendor') or 'amd', float(hw.get('vram') or 0))
 
     def model_args(self):
         f = {k: v.resolve() for k, v in self.files().items()}
@@ -583,13 +668,40 @@ class AIVideo:
         if seg.is_file() and last.is_file():
             return last
         tmp = d / ('tmp-%03d' % idx)
-        imgs, sec = self._run_sd(init_png, tmp, prompt, seed, W, H, frames, job, p0, p1)
+        gen = self.hw.get('gen') or 'auto'
+        if not self.active_rid:
+            self.active_rid = self.pick_recipe(quality)
+        for _try in range(len(tunerlib.SAFE_ORDER)):
+            try:
+                imgs, sec = self._run_sd(init_png, tmp, prompt, seed, W, H, frames, job, p0, p1)
+                break
+            except RuntimeError as ex:
+                if 'Grafikspeicher' not in str(ex) or job.get('cancel'):
+                    if not job.get('cancel'):
+                        self.tuner.record(gen, quality, self.active_rid, fail=True)
+                    raise
+                # 1.10.0: Speicher reicht nicht -> Rezept merken + automatisch mit sichererem Rezept wiederholen
+                self.tuner.record(gen, quality, self.active_rid, oom=True)
+                nxt = self.tuner.safer(self.active_rid, gen, quality)
+                if not nxt:
+                    raise
+                self.active_rid = nxt
+                if self.server:
+                    self.server.stop()
+                    self.server = None
+                job['note'] = (job.get('note') or '') + ' · Speicher knapp – KI weicht aus (%s)' % tunerlib.RECIPES[nxt]['name']
         self._store_speed(quality, sec)
-        if ref is not None and cv2 is not None and cmatch > 0:
-            refimg = cv2.imdecode(np.fromfile(str(ref), np.uint8), cv2.IMREAD_COLOR)
+        self.tuner.record(gen, quality, self.active_rid, sec_per_frame=sec / max(1, frames))
+        if cv2 is not None:
+            refimg = cv2.imdecode(np.fromfile(str(ref or init_png), np.uint8), cv2.IMREAD_COLOR)
             fr = [cv2.imdecode(np.fromfile(str(p), np.uint8), cv2.IMREAD_COLOR) for p in imgs]
-            for p, f in zip(imgs, color_match(fr, refimg, cmatch)):
-                cv2.imencode('.png', f)[1].tofile(str(p))
+            if ref is not None and cmatch > 0:
+                fr = color_match(fr, refimg, cmatch)
+                for p, f in zip(imgs, fr):
+                    cv2.imencode('.png', f)[1].tofile(str(p))
+            if idx == 0:                                   # Qualitäts-Messwerte fürs Lernen aus deinen Sternen
+                f = tunerlib.features(fr, refimg)
+                (d / 'quality.json').write_text(json.dumps({'f': f, 'recipe': self.active_rid}), 'utf-8')
         shutil.copyfile(imgs[-1], last)
         if idx == 0:
             shutil.copyfile(imgs[0], d / 'first.png')
@@ -734,6 +846,7 @@ class AIVideo:
 
     def _job(self, job, still_png, o):
         with self.lock:
+            self.active_rid = None                    # pro Auftrag neu das beste Rezept wählen
             if job['cancel']:
                 job.update(state='abgebrochen')
                 return
@@ -766,8 +879,11 @@ class AIVideo:
                         job['note'] = 'Variante %d von %d wird berechnet …' % (n + 1, len(seeds))
                         self._segment(vd, 0, init, prompt, sd, W, H, frames, job, n * 100 // len(seeds), (n + 1) * 100 // len(seeds), o['quality'],
                                       ref=init, cmatch=cm)
-                        out.append({'seed': sd, 'video': str(vd / 'segment-000.mp4')})
-                    job.update(state='fertig', percent=100, note='', result={'variants': out, 'key': o['key']})
+                        q = self.quality_of(vd)
+                        out.append({'seed': sd, 'video': str(vd / 'segment-000.mp4'), 'score': self.tuner.score(q)})
+                    sc = [v['score'] or 0 for v in out]
+                    tip = sc.index(max(sc)) if any(sc) else -1
+                    job.update(state='fertig', percent=100, note='', result={'variants': out, 'key': o['key'], 'tip': tip})
                     return
                 # volle Länge
                 sd = int(o['seed'])
@@ -917,7 +1033,8 @@ class AIVideo:
         for vd in sorted(d.glob('seed-*')):
             sd = int(vd.name[5:])
             if (vd / 'segment-000.mp4').is_file():
-                out['variants'].append({'seed': sd, 'video': (vd / 'segment-000.mp4').relative_to(self.jobs_dir).as_posix()})
+                out['variants'].append({'seed': sd, 'video': (vd / 'segment-000.mp4').relative_to(self.jobs_dir).as_posix(),
+                                        'score': self.tuner.score(self.quality_of(vd))})
             for c in vd.glob('ki-video-*.mp4'):
                 m = re.fullmatch(r'ki-video-(\d+)s(-hd)?', c.stem)
                 if m:
@@ -925,4 +1042,6 @@ class AIVideo:
             n = len([p for p in vd.glob('segment-*.mp4') if re.fullmatch(r'segment-\d+', p.stem)])
             if n > 1:
                 out['partial'].append({'seed': sd, 'segments': n})
+        sc = [v['score'] or 0 for v in out['variants']]
+        out['tip'] = out['variants'][sc.index(max(sc))]['seed'] if len(sc) > 1 and max(sc) > 0 else 0
         return out
