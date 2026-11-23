@@ -11,6 +11,7 @@ on:
       - 'tools/aivideo_test.py'
       - 'tools/make_upscaler.py'
       - 'upscale.py'
+      - 'hwinfo.py'
       - '.github/workflows/aivideo-test.yml'
 
 permissions:
@@ -39,9 +40,9 @@ jobs:
           New-Item -ItemType Directory -Force upmodels | Out-Null
           python tools/make_upscaler.py realesr-general-x4v3.pth upmodels\realesr-general-x4v3.onnx
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          gh release download -R leejet/stable-diffusion.cpp --pattern "*-bin-win-vulkan-x64.zip" -O sdcpp.zip --clobber
+          gh release download master-1117-0d71f96 -R leejet/stable-diffusion.cpp --pattern "*-bin-win-vulkan-x64.zip" -O sdcpp.zip --clobber
           Expand-Archive sdcpp.zip -DestinationPath sdcpp -Force
-          (gh release view -R leejet/stable-diffusion.cpp --json tagName -q .tagName)
+          'sd.cpp master-1117-0d71f96'
           Invoke-WebRequest -UseBasicParsing 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip' -OutFile ff.zip
           Expand-Archive ff.zip -DestinationPath fftmp -Force
           $global:LASTEXITCODE = 0

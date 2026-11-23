@@ -2169,7 +2169,7 @@ async function drawLearn() {
   const u = LN.update;
   box.append(lnCard('⬆️ Neue KI-Versionen', '',
     el('p', {}, u ? (u.newer ? `Neue Version ${u.latest} ist da (du hast ${u.current}).` : u.latest ? `Du hast die neueste Version (${u.current}).` : 'Keine Verbindung zu GitHub – wird beim nächsten Start erneut geprüft.') : 'Wird geprüft …'),
-    u && u.newer ? el('div', { class: 'ln-acts' }, el('button', { type: 'button', class: 'btn small glow', onclick: () => api('/api/open-url', { url: u.url }) }, 'Jetzt herunterladen')) : null));
+    u && u.newer ? el('div', { class: 'ln-acts' }, el('button', { type: 'button', class: 'btn small glow', onclick: () => { $('#learnDlg').close(); openSettings('upd', true) } }, 'Jetzt aktualisieren')) : null));
 }
 async function resetLearn(part) {
   const what = { hl: 'die gelernte beste Stelle', words: 'die gelernten Songtext-Wörter und korrigierten Texte', style: 'deinen gelernten Stil', ai: 'die KI-Video-Bewertungen' }[part] || 'alles Gelernte';
@@ -2180,8 +2180,137 @@ async function resetLearn(part) {
 $('#learnBtn').onclick = () => { $('#lnList').textContent = ''; $('#learnDlg').showModal(); drawLearn().catch(e => toast(e.message, true)) };
 $('#lnResetAll').onclick = () => resetLearn('');
 $('#updLater').onclick = () => { $('#updBar').hidden = true };
-$('#updGo').onclick = () => { if (LN.update) api('/api/open-url', { url: LN.update.url }) };
+$('#updGo').onclick = () => { $('#updBar').hidden = true; openSettings('upd', true) };
 setTimeout(async () => {
+  const st = await api('/api/settings').catch(() => null);
+  if (KIWIN || (st && st.upd_auto === false)) return;          // automatische Suche abgeschaltet
   const u = await api('/api/update').catch(() => null); LN.update = u;
   if (u && u.newer) { $('#updText').textContent = `⬆️ Neue Version ${u.latest} ist verfügbar (mit verbesserter KI und Fehlerkorrekturen) – du hast ${u.current}.`; $('#updBar').hidden = false }
 }, 2500);
+
+
+/* ---------- Einstellungen (1.9.0): Updates · KI-Hardware · Speicher ---------- */
+const SET = { tab: 'upd', hw: null, st: null, updPoll: 0, benchPoll: 0 };
+const gbTxt = x => String(Math.round(x * 10) / 10).replace('.', ',') + ' GB';
+async function openSettings(tab, install) {
+  SET.tab = tab || SET.tab; if (!$('#setDlg').open) $('#setDlg').showModal(); await drawSet();
+  if (install) updInstall();
+}
+$('#setBtn').onclick = () => openSettings();
+$$('#setTabs button').forEach(b => b.onclick = () => { SET.tab = b.dataset.t; drawSet() });
+async function drawSet() {
+  $$('#setTabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.t === SET.tab)));
+  const box = $('#setBody'); box.textContent = '';
+  try {
+    if (SET.tab === 'upd') await drawUpd(box);
+    else if (SET.tab === 'hw') await drawHw(box);
+    else await drawMem(box);
+  } catch (e) { box.append(el('p', { class: 'hint' }, 'Fehler: ' + e.message)) }
+}
+async function drawUpd(box) {
+  SET.st = await api('/api/settings');
+  const u = LN.update || (LN.update = await api('/api/update').catch(() => null));
+  const auto = el('button', { type: 'button', class: 'switch', role: 'switch', 'aria-checked': String(SET.st.upd_auto !== false), 'aria-label': 'Automatisch nach Updates suchen' }, el('i'));
+  auto.onclick = async () => { const v = auto.getAttribute('aria-checked') !== 'true'; auto.setAttribute('aria-checked', String(v)); await api('/api/settings', { upd_auto: v }).catch(e => toast(e.message, true)) };
+  const status = !u ? 'Wird geprüft …' : u.error ? 'Keine Verbindung zu GitHub – später nochmal versuchen.' : u.newer ? `Neue Version ${u.latest} ist da!` : `Du hast die neueste Version.`;
+  box.append(
+    lnCard('Installierte Version', '', el('div', { class: 'set-big' }, 'ffmpeg_encode Studio ' + SET.st.version), el('p', {}, status),
+      el('div', { class: 'ln-acts' },
+        el('button', { type: 'button', class: 'btn small', onclick: async () => { LN.update = await api('/api/update?force=1').catch(e => ({ error: e.message })); drawSet() } }, 'Jetzt nach Updates suchen'),
+        u && u.newer ? el('button', { type: 'button', class: 'btn small glow', id: 'updInstBtn', onclick: updInstall }, `Auf ${u.latest} aktualisieren`) : null),
+      el('div', { id: 'updProg', hidden: true }, el('div', { class: 'set-prog' }, el('i')), el('p', { id: 'updPhase' }, '')),
+      u && u.newer && u.notes ? el('div', { class: 'set-notes' }, u.notes) : null),
+    lnCard('Automatisch', '', el('div', { class: 'set-row' }, el('span', {}, el('b', {}, 'Beim Start nach Updates suchen'), el('small', {}, 'Zeigt oben einen Hinweis, sobald eine neue Version da ist. Installiert wird nur, wenn du es bestätigst.')), auto)),
+    el('p', { class: 'hint' }, 'So läuft ein Update: Die neue Version wird von GitHub geladen, still installiert und das Programm startet danach von selbst neu. Deine Einstellungen, Vorlagen, Projekte, das Gelernte und das KI-Paket bleiben erhalten.'));
+  if (SET.updPoll) updShow(await api('/api/update/task'));
+}
+function updShow(t) {
+  const p = $('#updProg'); if (!p) return;
+  p.hidden = false; $('#updProg i').style.width = (t.percent || 0) + '%';
+  $('#updPhase').textContent = t.state === 'fehler' ? '⚠️ ' + t.error : t.state === 'abgebrochen' ? 'Abgebrochen.' : `${Math.round(t.percent || 0)} % · ${t.phase || ''}`;
+  const b = $('#updInstBtn'); if (b) b.disabled = t.state === 'läuft' || t.state === 'fertig';
+}
+async function updInstall() {
+  if (!await ask('Jetzt aktualisieren?', 'Die neue Version wird geladen und installiert. Das Programm schließt sich dafür kurz und startet danach von selbst neu.', 'Aktualisieren')) return;
+  if (!$('#setDlg').open || SET.tab !== 'upd') await openSettings('upd');
+  try { updShow(await api('/api/update/install', {})) } catch (e) { toast(e.message, true); return }
+  clearInterval(SET.updPoll);
+  SET.updPoll = setInterval(async () => {
+    const t = await api('/api/update/task').catch(() => null); if (!t) return;
+    updShow(t);
+    if (t.state !== 'läuft') { clearInterval(SET.updPoll); SET.updPoll = 0; if (t.state === 'fertig') toast('✓ Update wird installiert – bis gleich!') }
+  }, 700);
+}
+async function drawHw(box, fresh) {
+  const h = SET.hw = fresh || await api('/api/hw');
+  const a = h.active;
+  box.append(el('p', { class: 'hint' }, 'Die KI prüft deinen PC und verteilt die Arbeit: die KI-Bewegung rechnet auf der stärksten Grafikkarte, der KI-Upscaler gleichzeitig auf der zweiten. Du kannst es hier auch selbst festlegen.'));
+  const gp = el('div', { class: 'hw-gpus' });
+  for (const g of h.gpus) {
+    const isMain = g.vulkan && g.vulkan === a.gen, isUp = String(g.dxgi) === String(a.up);
+    const t = h.bench && h.bench.gen && h.bench.gen[g.vulkan], tu = h.bench && h.bench.up && h.bench.up[String(g.dxgi)];
+    gp.append(el('div', { class: 'hw-gpu' + (isMain ? ' main' : '') }, el('span', { class: 'ic' }, g.kind === 'dgpu' ? '🎮' : '💻'),
+      el('div', {}, el('b', {}, g.name), el('small', {}, [g.kind === 'dgpu' ? 'Eigene Grafikkarte' : 'Prozessor-Grafik', g.vram ? gbTxt(g.vram) + ' Grafikspeicher' : (g.shared ? 'nutzt Arbeitsspeicher' : ''),
+        t ? `Test KI ${String(t).replace('.', ',')} s` : '', tu ? `Upscaler ${String(tu).replace('.', ',')} s/Bild` : '', g.vulkan ? '' : 'für die KI nicht nutzbar'].filter(Boolean).join(' · '))),
+      el('div', { class: 'hw-tags' }, isMain ? el('span', {}, 'KI-Bewegung') : null, isUp ? el('span', { class: isMain ? 'alt' : '' }, 'KI-Upscaler') : null)));
+  }
+  if (!h.gpus.length) gp.append(el('p', {}, 'Keine Grafikkarte erkannt – die KI rechnet auf dem Prozessor.'));
+  box.append(lnCard('🖥️ Dein PC', '', el('p', {}, el('b', {}, h.cpu), ` · ${h.cores} Kerne · ${gbTxt(h.ram)} Arbeitsspeicher · ${gbTxt(h.disk_free)} frei`), gp,
+    el('div', {}, ...h.notes.map(n => el('p', {}, '• ' + n)))));
+  const opt = (v, txt, cur) => el('option', { value: v, selected: String(cur) === String(v) }, txt);
+  const genSel = el('select', { class: 'set-sel', 'aria-label': 'KI-Bewegung rechnet auf' },
+    opt('auto', `Automatisch (${h.rec.gen_name})`, h.choice.gen), ...h.gpus.filter(g => g.vulkan).map(g => opt(g.vulkan, g.name, h.choice.gen)), opt('cpu', 'Prozessor (sehr langsam)', h.choice.gen));
+  const upSel = el('select', { class: 'set-sel', 'aria-label': 'KI-Upscaler rechnet auf' },
+    opt('auto', `Automatisch (${h.rec.up_name})`, h.choice.up), ...h.gpus.filter(g => g.dxgi >= 0).map(g => opt(g.dxgi, g.name, h.choice.up)), opt('cpu', 'Prozessor', h.choice.up));
+  const setHw = async v => { try { const r = await api('/api/hw/set', v); SET.hw = r; $('#setBody').textContent = ''; drawHw($('#setBody'), r); renderAiHw() } catch (e) { toast(e.message, true) } };
+  genSel.onchange = () => setHw({ gen: genSel.value }); upSel.onchange = () => setHw({ up: upSel.value });
+  const srv = el('button', { type: 'button', class: 'switch', role: 'switch', 'aria-checked': String(h.choice.server !== false), 'aria-label': 'KI geladen lassen' }, el('i'));
+  srv.onclick = () => setHw({ server: srv.getAttribute('aria-checked') !== 'true' });
+  box.append(lnCard('⚙️ Verteilung', '',
+    el('div', { class: 'set-row' }, el('span', {}, el('b', {}, 'KI-Bewegung rechnet auf'), el('small', {}, a.te === 'cpu' && a.gen !== 'cpu' ? 'Text-Teil der KI im Arbeitsspeicher, damit der Grafikspeicher reicht' : 'alle Teile auf dieser Karte')), genSel),
+    el('div', { class: 'set-row' }, el('span', {}, el('b', {}, 'KI-Upscaler rechnet auf'), el('small', {}, a.parallel ? '✓ gleichzeitig mit der KI-Bewegung (zwei Karten)' : 'nach jedem Stück (gleiche Karte)')), upSel),
+    el('div', { class: 'set-row' }, el('span', {}, el('b', {}, 'KI zwischen den Stücken geladen lassen'), el('small', {}, h.server_ok ? (h.server_error ? '⚠️ ' + h.server_error + ' – es wird der langsamere Weg genutzt.' : 'Viel schneller: die 8 GB werden nur einmal pro Auftrag geladen.') : 'In dieser Version nicht enthalten.')), srv)));
+  const bt = el('button', { type: 'button', class: 'btn small glow', disabled: !h.ai_ready }, h.bench && h.bench.t ? 'Schnelltest wiederholen' : 'Schnelltest starten');
+  const bp = el('div', { hidden: true }, el('div', { class: 'set-prog' }, el('i')), el('p', {}, ''));
+  bt.onclick = async () => {
+    try { const r = await api('/api/hw/bench', {}); bt.disabled = true; bp.hidden = false;
+      clearInterval(SET.benchPoll);
+      SET.benchPoll = setInterval(async () => {
+        const v = await api('/api/ai/job/' + r.id).catch(() => null); if (!v) return;
+        bp.querySelector('i').style.width = v.percent + '%'; bp.querySelector('p').textContent = `${v.percent} % · ${v.note || ''}`;
+        if (!['läuft', 'wartet'].includes(v.state)) {
+          clearInterval(SET.benchPoll); SET.benchPoll = 0;
+          if (v.state === 'fertig') { toast('✓ Schnelltest fertig – die schnellste Karte wird jetzt benutzt'); setTimeout(async () => { if (SET.tab === 'hw' && $('#setDlg').open) { const f = await api('/api/hw'); $('#setBody').textContent = ''; drawHw($('#setBody'), f); renderAiHw() } }, 2500) }
+          else toast(v.error || 'Schnelltest abgebrochen', true);
+        }
+      }, 1000);
+    } catch (e) { toast(e.message, true) }
+  };
+  box.append(lnCard('⏱️ Schnelltest', '', el('p', {}, h.ai_ready ? 'Misst jede Grafikkarte mit einem kleinen KI-Stück und dem Upscaler (dauert ein paar Minuten). Danach nimmt „Automatisch“ die wirklich schnellste Karte.' : 'Erst das KI-Video-Paket laden (Karte „KI-Video“), dann kann getestet werden.'),
+    el('div', { class: 'ln-acts' }, bt, el('button', { type: 'button', class: 'btn small', onclick: async () => { const f = await api('/api/hw/refresh', {}); $('#setBody').textContent = ''; drawHw($('#setBody'), f) } }, 'Neu erkennen')), bp));
+}
+async function drawMem(box) {
+  const st = await api('/api/settings'); const ai = st.ai;
+  const clr = el('button', { type: 'button', class: 'btn small', disabled: !st.ai_cache }, 'Zwischenspeicher leeren');
+  clr.onclick = async () => {
+    if (!await ask('Zwischenspeicher leeren?', 'Alle gespeicherten KI-Stücke und fertigen KI-Clips werden gelöscht (dein Video-Projekt bleibt, der KI-Clip muss dann neu berechnet werden).', 'Leeren')) { openSettings('mem'); return }
+    try { await api('/api/ai/cache-clear', {}); toast('✓ Aufgeräumt') } catch (e) { toast(e.message, true) }
+    openSettings('mem');
+  };
+  const rm = el('button', { type: 'button', class: 'btn small danger', disabled: !ai.ready }, 'KI-Paket entfernen');
+  rm.onclick = async () => {
+    if (!await ask('KI-Paket entfernen?', `Gibt ca. ${gbTxt(ai.need_gb)} frei. Für KI-Videos muss es danach neu geladen werden.`, 'Entfernen')) { openSettings('mem'); return }
+    await api('/api/ai/remove', {}).catch(e => toast(e.message, true)); toast('✓ Entfernt'); openSettings('mem');
+  };
+  box.append(lnCard('🎬 KI-Video Zwischenspeicher', '', el('div', { class: 'set-big' }, gbTxt(st.ai_cache)), el('p', {}, 'Fertige Stücke und Varianten – damit ein Abbruch dort weitermacht und du Clips nicht doppelt rechnen musst.'), el('div', { class: 'ln-acts' }, clr)),
+    lnCard('🧠 KI-Video-Paket', '', el('div', { class: 'set-big' }, ai.ready ? 'installiert · ' + gbTxt(ai.need_gb) : 'nicht installiert'), el('p', {}, `Ordner: ${ai.folder} · frei: ${gbTxt(ai.free_gb)}`), el('div', { class: 'ln-acts' }, rm)));
+}
+async function renderAiHw() {
+  const l = $('#aiHwLine'); if (!l) return;
+  if (!SET.hw) SET.hw = await api('/api/hw').catch(() => null);
+  const a = SET.hw && SET.hw.active; l.textContent = '';
+  if (!a) return;
+  l.append(`🧠 KI rechnet auf ${a.gen_name}` + (a.up_name && a.up_name !== a.gen_name ? ` · Upscaler ${a.parallel ? 'gleichzeitig ' : ''}auf ${a.up_name}` : '') + ' · ',
+    el('a', { onclick: () => openSettings('hw') }, 'ändern'));
+}
+setTimeout(renderAiHw, 3000);

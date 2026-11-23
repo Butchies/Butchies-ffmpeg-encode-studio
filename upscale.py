@@ -23,7 +23,15 @@ class Upscaler:
         self.sess = None
         self.error = ''
         self.device = ''
+        self.pick = -1        # 1.9.0: -1 = automatisch, 'cpu' = Prozessor, sonst DXGI-Nummer der Grafikkarte (Hardware-Analyse)
         self.lock = threading.Lock()
+
+    def set_device(self, pick):
+        """Grafikkarte für den Upscaler wählen (wirkt beim nächsten Laden)."""
+        pick = 'cpu' if pick == 'cpu' else int(pick) if str(pick).lstrip('-').isdigit() else -1
+        with self.lock:
+            if pick != self.pick:
+                self.pick, self.sess, self.device = pick, None, ''
 
     def file(self):
         f = self.folder / MODEL_FILE if self.folder else None
@@ -44,10 +52,14 @@ class Upscaler:
             so.log_severity_level = 3
             avail = ort.get_available_providers()
             tries = []
-            if 'DmlExecutionProvider' in avail:   # die stärkste Grafikkarte nehmen (nicht die Prozessor-Grafik)
+            if self.pick != 'cpu' and self.pick >= 0 and 'DmlExecutionProvider' in avail:
+                tries.append([('DmlExecutionProvider', {'device_id': self.pick}), 'CPUExecutionProvider'])   # genau diese Karte
+            if self.pick == 'cpu':
+                pass
+            elif 'DmlExecutionProvider' in avail:   # die stärkste Grafikkarte nehmen (nicht die Prozessor-Grafik)
                 tries.append([('DmlExecutionProvider', {'performance_preference': 'high_performance', 'device_filter': 'gpu'}), 'CPUExecutionProvider'])
                 tries.append(['DmlExecutionProvider', 'CPUExecutionProvider'])
-            if 'CUDAExecutionProvider' in avail:
+            if self.pick != 'cpu' and 'CUDAExecutionProvider' in avail:
                 tries.append(['CUDAExecutionProvider', 'CPUExecutionProvider'])
             tries.append(['CPUExecutionProvider'])
             for prov in tries:
@@ -91,3 +103,21 @@ class Upscaler:
                 raise RuntimeError('KI-Upscaler nicht verfügbar')
             big = self.up(rgb)
         return cv2.resize(big, (W, H), interpolation=cv2.INTER_AREA)
+
+    def bench(self, pick):
+        """Schnelltest: Sekunden für ein 480×270-Bild auf der gewählten Karte (ohne Ladezeit). Danach wieder wie vorher."""
+        old = self.pick
+        self.set_device(pick)
+        try:
+            img = (np.random.default_rng(1).random((270, 480, 3)) * 255).astype(np.uint8)
+            with self.lock:
+                if not self.load():
+                    return None
+                dev = self.device
+                self.up(img[:64, :64])                 # aufwärmen
+                import time
+                t0 = time.time()
+                self.up(img)
+                return {'sec': round(time.time() - t0, 2), 'device': dev}
+        finally:
+            self.set_device(old)

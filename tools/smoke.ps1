@@ -1,4 +1,4 @@
-# Echter Test auf Windows (GitHub Actions): startet das fertige Programm, legt Song + Bild ein,
+﻿# Echter Test auf Windows (GitHub Actions): startet das fertige Programm, legt Song + Bild ein,
 # konvertiert ein kurzes 1080p-Video und ein Shorts-Video und prüft das Ergebnis mit ffprobe.
 param([string]$Exe, [string]$Out)
 $ErrorActionPreference = 'Stop'
@@ -67,6 +67,14 @@ $ps = Invoke-RestMethod -Method Post -Uri "$base/api/presets/save" -Headers $h -
 # ---- 1.2.0: Markieren + KI (MobileSAM) ----
 "KI: $($info.ai.text)  (Werkzeuge: $($info.ai.tools), Modell: $($info.ai.model))" | Tee-Object -FilePath $Out -Append
 if (-not $info.ai.tools) { throw 'KI-Werkzeuge (OpenCV) fehlen im Programm' }
+# 1.9.0: KI-Hardware-Analyse + Einstellungen + Updater-Abfrage
+$hw = Invoke-RestMethod "$base/api/hw" -Headers $h
+"Hardware: $($hw.cpu) · $($hw.ram) GB · GPUs: $(($hw.gpus | ForEach-Object { $_.name + ' (' + $_.vulkan + ', dxgi ' + $_.dxgi + ')' }) -join ', ') · KI auf: $($hw.active.gen_name) · KI-Dienst: $($hw.server_ok)" | Tee-Object -FilePath $Out -Append
+if (-not $hw.server_ok) { throw 'sd-server (schnelle KI) fehlt im Programm' }
+$st = Invoke-RestMethod "$base/api/settings" -Headers $h
+if ($st.version -ne $info.version) { throw 'Einstellungen liefern falsche Version' }
+$up = Invoke-RestMethod "$base/api/update?force=1" -Headers $h
+"Update-Prüfung: aktuell $($up.current), neueste $($up.latest), Setup-Datei: $([bool]$up.setup)" | Tee-Object -FilePath $Out -Append
 if (-not $info.ai.model) { throw 'KI-Modell (MobileSAM) nicht mitgeliefert' }
 & $ff -v error -y -f lavfi -i "color=c=0x1c2a3a:s=1600x900,drawbox=x=600:y=250:w=400:h=400:color=0xf2c94c:t=fill" -frames:v 1 "$work\motiv.png"
 $m = Stage "$work\motiv.png" 'image'

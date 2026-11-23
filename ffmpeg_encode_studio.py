@@ -15,6 +15,7 @@ import lyrics
 import learn
 import aivideo
 import upscale
+import hwinfo
 try:
     import mark          # braucht numpy + OpenCV (+ onnxruntime für die KI)
 except Exception:  # noqa: BLE001
@@ -22,7 +23,7 @@ except Exception:  # noqa: BLE001
 
 APP_NAME = 'ffmpeg_encode Studio'
 APP_DIRNAME = 'ffmpeg_encode Studio'      # Ordnername für Einstellungen/Videos bleibt (deine Daten bleiben erhalten)
-VERSION = '1.8.0'
+VERSION = '1.9.0'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -1031,7 +1032,7 @@ def update_check():
     if UPDATE['data'] is not None and time.time() - UPDATE['t'] < 6 * 3600:
         return UPDATE['data']
     import urllib.request
-    res = {'current': VERSION, 'latest': '', 'newer': False, 'url': ''}
+    res = {'current': VERSION, 'latest': '', 'newer': False, 'url': '', 'setup': '', 'size': 0, 'notes': ''}
     try:
         req = urllib.request.Request('https://api.github.com/repos/Butchies/Butchies-ffmpeg-encode-studio/releases?per_page=20',
                                      headers={'User-Agent': 'ffmpeg_encode-Studio', 'Accept': 'application/vnd.github+json'})
@@ -1040,16 +1041,118 @@ def update_check():
         vers = []
         for x in rel:
             m = re.fullmatch(r'encoder-v(\d+)\.(\d+)\.(\d+)', x.get('tag_name') or '')
-            if m and not x.get('draft'):
-                vers.append((tuple(int(g) for g in m.groups()), x.get('html_url') or ''))
+            if m and not x.get('draft') and not x.get('prerelease'):
+                asset = next((a for a in x.get('assets') or [] if a.get('name', '').lower().endswith('setup.exe')), {})
+                vers.append((tuple(int(g) for g in m.groups()), x.get('html_url') or '', asset, (x.get('body') or '')[:3000]))
         if vers:
-            best = max(vers)
+            best = max(vers, key=lambda v: v[0])
             cur = tuple(int(g) for g in VERSION.split('.'))
-            res.update(latest='.'.join(map(str, best[0])), newer=best[0] > cur, url=best[1])
+            res.update(latest='.'.join(map(str, best[0])), newer=best[0] > cur, url=best[1],
+                       setup=best[2].get('browser_download_url') or '', size=best[2].get('size') or 0, notes=best[3])
     except Exception:  # noqa: BLE001
         res['error'] = 'offline'
     UPDATE.update(t=time.time(), data=res)
     return res
+
+
+UPD_TASK = {'state': 'idle', 'percent': 0, 'phase': '', 'error': ''}
+CLOSE_APP = [None]
+
+
+def update_install():
+    """1.9.0 Updater: Setup von GitHub laden, still installieren lassen und das Programm beenden.
+    Das Setup startet das Programm danach selbst wieder ([Run] … Check: WizardSilent)."""
+    import urllib.request
+    T = UPD_TASK
+    try:
+        UPDATE['t'] = 0
+        info = update_check()
+        if not info.get('newer') or not info.get('setup'):
+            raise RuntimeError('Kein neueres Update gefunden.' if not info.get('error') else 'Keine Verbindung zu GitHub.')
+        dest = Path(tempfile.gettempdir()) / ('ffmpeg_encode_Studio-Setup-%s.exe' % info['latest'])
+        tmp = dest.with_suffix('.part')
+        req = urllib.request.Request(info['setup'], headers={'User-Agent': 'ffmpeg_encode-Studio'})
+        with urllib.request.urlopen(req, timeout=30) as r, open(tmp, 'wb') as f:
+            total = int(r.headers.get('Content-Length') or info.get('size') or 0)
+            got = 0
+            while True:
+                b = r.read(1 << 20)
+                if not b:
+                    break
+                f.write(b)
+                got += len(b)
+                T['percent'] = round(got * 100 / total, 1) if total else 0
+                T['phase'] = 'Lade %.0f von %.0f MB' % (got / 1048576, total / 1048576)
+                if T.get('cancel'):
+                    raise RuntimeError('abgebrochen')
+        if total and got < total:
+            raise RuntimeError('Download unvollständig – bitte nochmal versuchen.')
+        tmp.replace(dest)
+        if busy():
+            raise RuntimeError('Gerade läuft eine Umwandlung oder KI-Rechnung – bitte erst abwarten.')
+        T.update(phase='Installation startet – das Programm startet gleich neu …', percent=100, state='fertig')
+        if os.name == 'nt':
+            subprocess.Popen([str(dest), '/SILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS'],
+                             close_fds=True, creationflags=0x00000008)
+            stop_all()
+            threading.Timer(1.5, CLOSE_APP[0] or (lambda: os._exit(0))).start()
+    except Exception as ex:  # noqa: BLE001
+        tmp_p = locals().get('tmp')
+        if tmp_p:
+            Path(tmp_p).unlink(missing_ok=True)
+        T.update(state='abgebrochen' if T.get('cancel') else 'fehler', error=str(ex))
+
+
+# ---------- 1.9.0 KI-Hardware-Analyse ----------
+HW_AN = {'data': None, 'lock': threading.Lock()}
+
+
+def hw_choice(conf=None):
+    conf = load_config() if conf is None else conf
+    return dict({'gen': 'auto', 'up': 'auto', 'server': True}, **(conf.get('ai_hw') or {}))
+
+
+def hw_analyze(force=False):
+    """Hardware einsammeln, Empfehlung berechnen und auf KI-Video + Upscaler anwenden."""
+    with HW_AN['lock']:
+        if HW_AN['data'] is None or force:
+            conf = load_config()
+            vk = AIV.devices() if AIV.sd else []
+            HW_AN['data'] = hwinfo.analyze(vk, HOME, AIV.need_gb(), (conf.get('ai_hw') or {}).get('bench'))
+        d = HW_AN['data']
+    ch = hw_choice()
+    rec = d['rec']
+    gen = rec['gen'] if ch['gen'] == 'auto' else ch['gen']
+    if ch['gen'] == 'auto' and gen == 'cpu':
+        gen = 'auto'                     # keine Karte erkannt: stable-diffusion.cpp selbst wählen lassen (nie fest auf Prozessor zwingen)
+    up = rec['up'] if ch['up'] == 'auto' else ch['up']
+    gmain = next((g for g in d['gpus'] if g.get('vulkan') == gen), None)
+    vram = gmain['vram'] if gmain else 0
+    upg = next((g for g in d['gpus'] if str(g['dxgi']) == str(up)), None)
+    AIV.hw = {'gen': gen if (gen == 'cpu' or any(v['name'] == gen for v in d['vulkan'])) else 'auto',  # unbekannt -> automatisch
+              'te': gen if gen not in ('cpu', 'auto') and vram >= 12 else 'cpu',
+              'decode_frames': 2 if vram >= 12 else 1,
+              'parallel': bool(upg and gmain and upg['name'] != gmain['name']),
+              'server': ch.get('server', True)}
+    UPS.set_device(up if up in ('cpu',) else int(up) if str(up).lstrip('-').isdigit() else -1)
+    out = dict(d, choice=ch, active=dict(AIV.hw, up=up, gen_name=gmain['name'] if gmain else ('Prozessor' if gen == 'cpu' else 'automatisch'),
+                                         up_name=upg['name'] if upg else ('Prozessor' if up == 'cpu' else 'automatisch')),
+               server_ok=bool(AIV.server_exe), server_error=AIV.server_error, upscaler=UPS.available(), ai_ready=AIV.ready())
+    return out
+
+
+def hw_bench_watch(jid):
+    while True:
+        v = AIV.view(jid)
+        if not v or v['state'] not in ('läuft', 'wartet'):
+            break
+        time.sleep(2)
+    if v and v.get('result') and (v['result'].get('gen') or v['result'].get('up')):
+        conf = load_config()
+        h = conf.setdefault('ai_hw', {})
+        h['bench'] = dict(v['result'], t=int(time.time()))
+        save_config(conf)
+        hw_analyze(True)
 
 
 STYLE_NAMES = {'fx': {e[0]: e[1] for e in fx.EFFECTS}, 'cam': {c[0]: c[1] for c in fx.CAMS},
@@ -1284,7 +1387,17 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/learn/style':
             return self.send_json(200, {'values': LEARN.style_suggest(DEFAULTS)})
         if path == '/api/update':
+            if 'force=1' in self.path:
+                UPDATE['t'] = 0
             return self.send_json(200, update_check())
+        if path == '/api/update/task':
+            return self.send_json(200, {k: v for k, v in UPD_TASK.items() if k != 'cancel'})
+        if path == '/api/hw':
+            return self.send_json(200, hw_analyze())
+        if path == '/api/settings':
+            conf = load_config()
+            return self.send_json(200, {'upd_auto': conf.get('upd_auto', True), 'ai_cache': AIV.cache_info(),
+                                        'ai': AIV.status(), 'version': VERSION})
         if path == '/api/info':
             conf = load_config()
             return self.send_json(200, {
@@ -1419,6 +1532,52 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(400, {'error': 'Die Songtext-Erkennung ist in diesem Programm nicht enthalten.'})
                 LYRICS.download()
                 return self.send_json(200, LYRICS.status())
+            if path == '/api/update/install':
+                if UPD_TASK['state'] == 'läuft':
+                    return self.send_json(200, UPD_TASK)
+                if busy():
+                    return self.send_json(400, {'error': 'Gerade läuft eine Umwandlung oder KI-Rechnung – bitte erst abwarten.'})
+                UPD_TASK.clear()
+                UPD_TASK.update(state='läuft', percent=0, phase='Verbinde mit GitHub …', error='')
+                threading.Thread(target=update_install, daemon=True).start()
+                return self.send_json(200, UPD_TASK)
+            if path == '/api/update/cancel':
+                UPD_TASK['cancel'] = True
+                return self.send_json(200, {'ok': True})
+            if path == '/api/settings':
+                conf = load_config()
+                if 'upd_auto' in data:
+                    conf['upd_auto'] = bool(data['upd_auto'])
+                save_config(conf)
+                return self.send_json(200, {'ok': True})
+            if path == '/api/hw/set':
+                conf = load_config()
+                h = conf.setdefault('ai_hw', {})
+                for k in ('gen', 'up'):
+                    if k in data:
+                        h[k] = str(data[k])[:40]
+                if 'server' in data:
+                    h['server'] = bool(data['server'])
+                save_config(conf)
+                return self.send_json(200, hw_analyze())
+            if path == '/api/hw/refresh':
+                AIV._devices = None
+                return self.send_json(200, hw_analyze(True))
+            if path == '/api/hw/bench':
+                d = hw_analyze()
+                devs = [g['vulkan'] for g in d['gpus'] if g.get('vulkan')]
+                ups = [g['dxgi'] for g in d['gpus'] if g['dxgi'] >= 0] if UPS.available() else []
+                try:
+                    jid = AIV.start_bench(devs, ups)
+                except RuntimeError as ex:
+                    return self.send_json(400, {'error': str(ex)})
+                threading.Thread(target=hw_bench_watch, args=(jid,), daemon=True).start()
+                return self.send_json(200, {'id': jid})
+            if path == '/api/ai/cache-clear':
+                try:
+                    return self.send_json(200, {'ai_cache': AIV.clear_cache()})
+                except RuntimeError as ex:
+                    return self.send_json(400, {'error': str(ex)})
             if path == '/api/ai/download':
                 AIV.download()
                 return self.send_json(200, AIV.status())
@@ -1452,6 +1611,7 @@ class Handler(BaseHTTPRequestHandler):
                                                 'estimate_variants': AIV.estimate(st['aiQual'], 1),
                                                 'learned': LEARN.ai_model(), 'upscaler': UPS.available()})
                 kind = 'full' if data.get('kind') == 'full' else 'variants'
+                hw_analyze()                                   # Grafikkarten-Zuordnung sicher gesetzt
                 try:
                     lm = LEARN.ai_model()
                     jid = AIV.start(kind, ai_still(img, st), {
@@ -2129,6 +2289,7 @@ def native_window(url):
     except Exception:  # noqa: BLE001
         return False
     frame = WinFrame()
+    CLOSE_APP[0] = frame.close
     NATIVE[0] = True
 
     class Api:
@@ -2184,9 +2345,6 @@ def native_window(url):
                 print('KI-Fenster:', ex, flush=True)
                 return False
 
-        def ki_close(self):
-            return ki_window_close()
-
         def pick_folder(self, start=''):
             try:
                 res = frame.win.create_file_dialog(webview.FOLDER_DIALOG, directory=start or '')
@@ -2218,6 +2376,7 @@ def native_window(url):
 def main():
     HOME.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=hw_check, daemon=True).start()
+    threading.Thread(target=lambda: hw_analyze(), daemon=True).start()      # KI-Hardware-Analyse (Grafikkarten-Zuordnung)
     threading.Thread(target=detect_gpus, daemon=True).start()
     threading.Thread(target=worker, daemon=True).start()
     server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)

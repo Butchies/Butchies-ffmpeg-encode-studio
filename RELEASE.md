@@ -1,4 +1,4 @@
-**ffmpeg_encode Studio 1.8.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
+**ffmpeg_encode Studio 1.9.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
 
 **Installieren:** `ffmpeg_encode_Studio-Setup.exe` herunterladen und starten. Es werden keine Administratorrechte gebraucht.
 FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingerichtet.
@@ -9,6 +9,14 @@ FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingeric
 - Audio-Visualizer (Wellenform/Spektrum) in Design- oder eigener Farbe
 - Grafikkarte automatisch (NVIDIA NVENC, Intel Quick Sync, AMD AMF), sonst CPU – mit automatischem Rückfall
 - Fortschritt in Prozent, Warteschlange, 7 Designs und Start-/Abschieds-Animation der Butchies-Webseite
+
+**Neu in 1.9.0 – KI-Hardware-Analyse, schnellere KI, Updater**
+- **KI-Hardware-Analyse** (⚙️ Einstellungen → 🧠 KI-Hardware): erkennt Prozessor, Arbeitsspeicher und alle Grafikkarten und verteilt die Arbeit – KI-Bewegung auf der stärksten Karte, KI-Upscaler **gleichzeitig** auf der zweiten (z. B. RX 7600M XT + Radeon 760M). Auch von Hand wählbar
+- **Schnelltest:** misst jede Grafikkarte mit einem kleinen KI-Stück und nimmt danach automatisch die wirklich schnellste
+- **Schneller:** die KI bleibt während eines Auftrags geladen (vorher wurden die 8 GB für jedes Stück neu geladen); der Text-Teil der KI läuft im Arbeitsspeicher, damit der Grafikspeicher fürs Bild reicht; Upscaler rechnet parallel statt danach
+- **Updater eingebaut** (⚙️ Einstellungen → ⬆️ Updates): neue Version mit einem Klick laden und installieren, das Programm startet danach von selbst neu; automatische Suche abschaltbar
+- **Speicher aufräumen:** Größe des KI-Zwischenspeichers sehen und leeren, KI-Paket entfernen
+- Aufgeräumt: ungenutzter Code und alte Stile entfernt; KI-Motor fest auf eine geprüfte Version gesetzt
 
 **Neu in 1.8.0 – KI-Video: echte Bewegung aus deinem Bild**
 - Neue Karte „🎬 KI-Video“: eine KI (Wan 2.2, offline auf deinem PC) erzeugt aus deinem Bild echte Bewegung – z. B. Haare wehen, Blinzeln, Tanzen, Wasser, Wolken, Licht

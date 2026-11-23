@@ -11,7 +11,16 @@ Ablauf
   (verhindert, dass Farben/Gesicht mit der Zeit „verlaufen“). Am Ende Rückkehr zum Original
   -> die Datei lässt sich nahtlos wiederholen.
 - Jedes fertige Stück wird gespeichert (segment-XXX.mp4 + letztes Bild) -> Abbruch/Neustart macht dort weiter.
+
+1.9.0 Tempo
+- Die KI bleibt geladen (sd-server): die 8 GB werden einmal pro Auftrag geladen statt für jedes Stück neu.
+  Klappt der Server nicht, rechnet sd-cli wie bisher (automatischer Rückfall).
+- Feste Zuordnung aus der Hardware-Analyse: Bewegung + VAE auf der stärksten Karte, Text-Teil auf Prozessor,
+  KI-Upscaler gleichzeitig auf der zweiten Karte (eigener Arbeitsfaden, rechnet Stück n während Stück n+1 entsteht).
 """
+import base64
+import queue
+import socket
 import hashlib
 import json
 import os
@@ -112,6 +121,113 @@ def plan(length_s, frames):
     return segs
 
 
+OOM = re.compile(r'out of memory|ErrorOutOfDeviceMemory|failed to allocate', re.I)
+NOPROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+class SdServer:
+    """stable-diffusion.cpp als Hintergrund-Dienst (nur 127.0.0.1): Modelle bleiben im Grafikspeicher."""
+
+    def __init__(self, exe, args, log, nw, sig):
+        self.exe, self.args, self.log, self.nw, self.sig = exe, args, Path(log), nw, sig
+        self.proc = None
+        self.port = 0
+        self.last = time.time()
+
+    def touch(self):
+        self.last = time.time()
+
+    def alive(self):
+        return self.proc is not None and self.proc.poll() is None
+
+    def tail(self, n=3000):
+        try:
+            return self.log.read_bytes()[-n:].decode('utf-8', 'replace')
+        except OSError:
+            return ''
+
+    def _req(self, path, body=None, timeout=10):
+        data = json.dumps(body).encode('utf-8') if body is not None else None
+        rq = urllib.request.Request('http://127.0.0.1:%d%s' % (self.port, path), data=data,
+                                    headers={'Content-Type': 'application/json'} if data else {})
+        with NOPROXY.open(rq, timeout=timeout) as r:
+            return json.loads(r.read().decode('utf-8') or '{}')
+
+    def start(self, job, timeout=1800):
+        with socket.socket() as so:
+            so.bind(('127.0.0.1', 0))
+            self.port = so.getsockname()[1]
+        self.log.parent.mkdir(parents=True, exist_ok=True)
+        lf = open(self.log, 'wb')
+        self.proc = subprocess.Popen([self.exe, '--listen-ip', '127.0.0.1', '--listen-port', str(self.port)] + self.args,
+                                     stdout=lf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=self.nw,
+                                     cwd=str(self.log.parent))
+        lf.close()
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            if job.get('cancel'):
+                raise RuntimeError('abgebrochen')
+            if self.proc.poll() is not None:
+                t = self.tail()
+                if OOM.search(t):
+                    raise RuntimeError('Der Grafikspeicher reicht nicht.')
+                raise RuntimeError('KI-Dienst beendet: ' + (t.strip().splitlines() or [''])[-1][:200])
+            try:
+                self._req('/sdcpp/v1/capabilities', timeout=3)
+                return
+            except Exception:  # noqa: BLE001
+                time.sleep(1.5)
+        raise RuntimeError('KI-Dienst startet nicht (Zeit überschritten)')
+
+    def generate(self, body, job, prog):
+        r = self._req('/sdcpp/v1/vid_gen', body, timeout=120)
+        jid = r.get('id')
+        if not jid:
+            raise RuntimeError('KI-Dienst hat den Auftrag abgelehnt: %s' % (r.get('error') or r))
+        try:
+            while True:
+                if job.get('cancel'):
+                    try:
+                        self._req('/sdcpp/v1/jobs/%s/cancel' % jid, {}, timeout=5)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    raise RuntimeError('abgebrochen')
+                if not self.alive():
+                    t = self.tail()
+                    if OOM.search(t):
+                        raise RuntimeError('Der Grafikspeicher reicht nicht – bitte „Schnell“ wählen oder andere Programme schließen.')
+                    raise RuntimeError('Die KI wurde unerwartet beendet.')
+                try:
+                    st = self._req('/sdcpp/v1/jobs/' + jid, timeout=30)
+                except Exception:  # noqa: BLE001
+                    time.sleep(1)
+                    continue
+                pg = st.get('progress') or {}
+                if pg.get('total'):
+                    prog(int(pg.get('completed') or 0), int(pg['total']))
+                state = st.get('status')
+                if state == 'completed':
+                    self.touch()
+                    return st.get('result') or {}
+                if state in ('failed', 'cancelled'):
+                    t = self.tail()
+                    if OOM.search(t):
+                        raise RuntimeError('Der Grafikspeicher reicht nicht – bitte „Schnell“ wählen oder andere Programme schließen.')
+                    raise RuntimeError('Die KI konnte das Stück nicht berechnen. %s' % (st.get('error') or (t.strip().splitlines() or [''])[-1][:200]))
+                time.sleep(0.8)
+        finally:
+            self.touch()
+
+    def stop(self):
+        p, self.proc = self.proc, None
+        if p and p.poll() is None:
+            try:
+                p.kill()
+                p.wait(10)
+            except Exception:  # noqa: BLE001
+                pass
+
+
 class AIVideo:
     def __init__(self, home, app_dir, base_dir, ffmpeg, no_window=0):
         self.dir = Path(home).resolve() / 'aivideo'
@@ -130,6 +246,11 @@ class AIVideo:
         self._devices = None
         self.speed_file = self.dir / 'speed.json'
         self.upscaler = None                 # wird vom Programm gesetzt (upscale.Upscaler)
+        self.hw = {}                         # 1.9.0: Zuordnung aus der Hardware-Analyse (gen/te/decode_frames/server)
+        srv = [str(Path(self.sd).with_name('sd-server' + Path(self.sd).suffix))] if self.sd else []
+        self.server_exe = next((c for c in srv + [os.environ.get('BES_SDSERVER') or ''] if c and Path(c).is_file()), '')
+        self.server = None
+        self.server_error = ''
 
     # ---------- Paket ----------
     def manifest_path(self):
@@ -157,7 +278,7 @@ class AIVideo:
             return 0.0
 
     def status(self):
-        running = [self.view(j['id']) for j in self.jobs.values() if j['state'] in ('läuft', 'wartet')]
+        running = [self.view(j['id']) for j in self.jobs.values() if j['state'] in ('läuft', 'wartet') and j['kind'] != 'bench']
         return {'tool': bool(self.sd), 'ready': self.ready(), 'download': dict(self.dl), 'need_gb': self.need_gb(), 'running': running,
                 'free_gb': self.free_gb(), 'devices': self.devices() if self.sd else [], 'speed': self.speeds(),
                 'motions': [[m[0], m[1]] for m in MOTIONS], 'qualities': QUALITY_NAMES, 'folder': str(self.models)}
@@ -236,6 +357,22 @@ class AIVideo:
         self.dl = {'state': 'idle', 'percent': 0, 'error': '', 'done_gb': 0.0, 'total_gb': 0.0}
 
     # ---------- Geräte / Tempo ----------
+    def cache_info(self):
+        """Größe des KI-Zwischenspeichers (fertige Stücke/Clips) in GB."""
+        tot = 0
+        for f in self.jobs_dir.rglob('*') if self.jobs_dir.is_dir() else []:
+            try:
+                tot += f.stat().st_size if f.is_file() else 0
+            except OSError:
+                pass
+        return round(tot / 1024 ** 3, 2)
+
+    def clear_cache(self):
+        if self.lock.locked():
+            raise RuntimeError('Gerade läuft eine KI-Rechnung – bitte erst abwarten oder abbrechen.')
+        shutil.rmtree(self.jobs_dir, ignore_errors=True)
+        return self.cache_info()
+
     def devices(self):
         if self._devices is None:
             out = []
@@ -283,19 +420,80 @@ class AIVideo:
     def job_dir(self, key):
         return self.jobs_dir / key
 
-    def _run_sd(self, init_png, out_dir, prompt, seed, W, H, frames, job, p0, p1):
-        """Ein Stück erzeugen -> PNG-Bilder in out_dir. Fortschritt p0…p1 (%)."""
+    # ---------- Grafikkarten-Zuordnung ----------
+    def backend_args(self, hw=None):
+        """--backend aus der Hardware-Analyse: Bewegung+VAE auf einer Karte, Text-Teil (umT5) auf Prozessor/Karte."""
+        hw = self.hw if hw is None else hw
+        g, te = (hw.get('gen') or 'auto'), (hw.get('te') or 'cpu')
+        out = []
+        if g == 'cpu':
+            out += ['--backend', 'cpu']
+        elif g != 'auto':
+            out += ['--backend', 'diffusion=%s,vae=%s,te=%s' % (g, g, te)]
+        n = int(hw.get('decode_frames') or 1)
+        if n > 1:
+            out += ['--extra-tiling-args', 'temporal_decode_frames=%d' % n]
+        return out
+
+    def model_args(self):
         f = {k: v.resolve() for k, v in self.files().items()}
+        return ['--diffusion-model', str(f['diffusion']), '--vae', str(f['vae']), '--t5xxl', str(f['t5']),
+                '--cfg-scale', str(MODEL['cfg']), '--sampling-method', MODEL['sampler'], '--steps', str(MODEL['steps']),
+                '--flow-shift', str(MODEL['flow_shift']), '--fps', str(GEN_FPS), '--vae-tiling']
+
+    def _server_for(self, job, hw=None):
+        """Geladene KI holen (oder starten). None = Server nicht nutzbar -> sd-cli."""
+        hw = self.hw if hw is None else hw
+        if not self.server_exe or hw.get('server') is False or os.environ.get('BES_NO_SDSERVER'):
+            return None
+        sig = json.dumps([self.model_args(), self.backend_args(hw)])
+        if self.server and (self.server.sig != sig or not self.server.alive()):
+            self.server.stop()
+            self.server = None
+        if self.server is None:
+            sv = SdServer(self.server_exe, self.model_args() + self.backend_args(hw), self.dir / 'server.log', self.nw, sig)
+            try:
+                job['note'] = (job.get('note') or '') + ' · KI wird geladen …'
+                sv.start(job)
+            except Exception as ex:  # noqa: BLE001
+                sv.stop()
+                if job.get('cancel'):
+                    raise RuntimeError('abgebrochen')
+                self.server_error = str(ex)
+                return None
+            finally:
+                job['note'] = (job.get('note') or '').replace(' · KI wird geladen …', '')
+            self.server = sv
+            self.server_error = ''
+        self.server.touch()
+        return self.server
+
+    def release_server(self, idle=180):
+        """Nach einem Auftrag: KI noch kurz geladen lassen (nächster Auftrag startet sofort), dann Grafikspeicher freigeben."""
+        sv = self.server
+        if sv:
+            sv.touch()
+
+            def later():
+                time.sleep(idle + 1)
+                if self.server is sv and time.time() - sv.last >= idle and not self.lock.locked():
+                    sv.stop()
+                    self.server = None
+            threading.Thread(target=later, daemon=True).start()
+
+    def _run_sd(self, init_png, out_dir, prompt, seed, W, H, frames, job, p0, p1, hw=None):
+        """Ein Stück erzeugen -> PNG-Bilder in out_dir. Fortschritt p0…p1 (%)."""
         out_dir = Path(out_dir).resolve()
         init_png = Path(init_png).resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         for old in out_dir.glob('f_*.png'):
             old.unlink()
-        args = [self.sd, '-M', 'vid_gen', '--diffusion-model', str(f['diffusion']), '--vae', str(f['vae']),
-                '--t5xxl', str(f['t5']), '-p', prompt, '-i', str(init_png), '--cfg-scale', str(MODEL['cfg']),
-                '--sampling-method', MODEL['sampler'], '--steps', str(MODEL['steps']), '--flow-shift', str(MODEL['flow_shift']),
-                '-W', str(W), '-H', str(H), '--video-frames', str(frames), '--fps', str(GEN_FPS), '-s', str(int(seed)),
-                '--vae-tiling', '-o', str(out_dir / 'f_%04d.png')]
+        sv = self._server_for(job, hw)
+        if sv is not None:
+            return self._run_server(sv, init_png, out_dir, prompt, seed, W, H, frames, job, p0, p1)
+        args = [self.sd, '-M', 'vid_gen'] + self.model_args() + self.backend_args(hw) + [
+                '-p', prompt, '-i', str(init_png), '-W', str(W), '-H', str(H), '--video-frames', str(frames),
+                '-s', str(int(seed)), '-o', str(out_dir / 'f_%04d.png')]
         args += [a for a in os.environ.get('BES_SD_EXTRA', '').split() if a]
         log = out_dir / 'sd.log'
         t0 = time.time()
@@ -339,6 +537,35 @@ class AIVideo:
             raise RuntimeError('Die KI konnte das Stück nicht berechnen. ' + tail.strip().splitlines()[-1][:200] if tail.strip() else 'Die KI wurde unerwartet beendet.')
         return imgs, time.time() - t0
 
+    def _run_server(self, sv, init_png, out_dir, prompt, seed, W, H, frames, job, p0, p1):
+        t0 = time.time()
+        body = {'prompt': prompt, 'init_image': base64.b64encode(init_png.read_bytes()).decode('ascii'),
+                'width': W, 'height': H, 'video_frames': frames, 'fps': GEN_FPS, 'seed': int(seed),
+                'sample_params': {'sample_steps': MODEL['steps'], 'sample_method': MODEL['sampler'], 'flow_shift': MODEL['flow_shift'],
+                                  'guidance': {'txt_cfg': MODEL['cfg']}},
+                'vae_tiling_params': {'enabled': True}, 'output_format': 'avi', 'output_compression': 100}
+        phase = [0]
+
+        def prog(done, total):
+            if total == MODEL['steps']:
+                phase[0] = 1
+                frac = 0.1 + 0.6 * done / total
+            else:
+                frac = 0.7 + 0.3 * done / max(1, total) if phase[0] else 0.05
+            job['percent'] = max(job.get('percent', 0), int(p0 + (p1 - p0) * frac))
+        res = sv.generate(body, job, prog)
+        avi = out_dir / 'stueck.avi'
+        avi.write_bytes(base64.b64decode(res.get('b64_json') or ''))
+        (out_dir / 'sd.log').write_text(json.dumps({k: v for k, v in res.items() if k != 'b64_json'}, ensure_ascii=False) +
+                                        '\n' + sv.tail(), 'utf-8')
+        r = subprocess.run([self.ffmpeg, '-hide_banner', '-v', 'error', '-y', '-i', str(avi), '-start_number', '1',
+                            str(out_dir / 'f_%04d.png')], capture_output=True, creationflags=self.nw, stdin=subprocess.DEVNULL, timeout=600)
+        avi.unlink()
+        imgs = sorted(out_dir.glob('f_*.png'))
+        if r.returncode or len(imgs) < 2:
+            raise RuntimeError('Die KI-Bilder konnten nicht gelesen werden.')
+        return imgs, time.time() - t0
+
     def _encode_frames(self, imgs, out_mp4, skip_first=False):
         lst = out_mp4.with_suffix('.txt')
         lst.write_text(''.join("file '%s'\n" % p.as_posix() for p in (imgs[1:] if skip_first else imgs)), 'utf-8')
@@ -374,7 +601,7 @@ class AIVideo:
         shutil.rmtree(tmp, ignore_errors=True)
         return last
 
-    def _upscale_segment(self, d, idx, W2, H2, job, p0, p1):
+    def _upscale_segment(self, d, idx, W2, H2, job, cb):
         """Stück idx mit der KI auf Full HD hochrechnen (segment-XXX-hd.mp4, bleibt gespeichert)."""
         src, dst = d / ('segment-%03d.mp4' % idx), d / ('segment-%03d-hd.mp4' % idx)
         if dst.is_file():
@@ -391,7 +618,7 @@ class AIVideo:
                 enc.kill()
                 raise RuntimeError('abgebrochen')
             enc.stdin.write(self.upscaler.to_size(fr, W2, H2).tobytes())
-            job['percent'] = int(p0 + (p1 - p0) * (k + 1) / max(1, len(frames)))
+            cb((k + 1) / max(1, len(frames)))
         enc.stdin.close()
         enc.wait()
         if enc.returncode:
@@ -410,6 +637,62 @@ class AIVideo:
         threading.Thread(target=self._job, args=(job, Path(still_png), opts), daemon=True).start()
         return jid
 
+    def start_bench(self, devices, upscaler_devs=()):
+        """Schnelltest der Hardware: kleines Stück (256 × 160, 9 Bilder) je Grafikkarte, Upscaler je Karte."""
+        if not self.ready():
+            raise RuntimeError('Für den Schnelltest muss das KI-Video-Paket installiert sein.')
+        jid = hashlib.sha1(('%s bench' % time.time()).encode()).hexdigest()[:10]
+        job = {'id': jid, 'kind': 'bench', 'state': 'wartet', 'percent': 0, 'error': '', 'note': '', 'result': None,
+               'cancel': False, 'proc': None, 'started': time.time()}
+        self.jobs[jid] = job
+        threading.Thread(target=self._bench, args=(job, list(devices), list(upscaler_devs)), daemon=True).start()
+        return jid
+
+    def _bench(self, job, devices, updevs):
+        with self.lock:
+            job['state'] = 'läuft'
+            res = {'gen': {}, 'up': {}, 'load': {}}
+            try:
+                d = (self.dir / 'bench').resolve()
+                d.mkdir(parents=True, exist_ok=True)
+                init = d / 'start.png'
+                img = np.zeros((160, 256, 3), np.uint8)
+                img[:] = (90, 40, 150)
+                if cv2 is not None:
+                    cv2.circle(img, (128, 80), 50, (160, 180, 230), -1)
+                    cv2.imencode('.png', img)[1].tofile(str(init))
+                steps = len(devices) + len(updevs)
+                for n, dev in enumerate(devices):
+                    job['note'] = 'KI-Test auf %s …' % dev
+                    hw = dict(self.hw, gen=dev, te='cpu')
+                    t0 = time.time()
+                    self._run_sd(init, d / 'f', 'a calm portrait, gentle motion', 1, 256, 160, 9, job,
+                                 n * 100 // steps, (n + 1) * 100 // steps, hw=hw)
+                    total = time.time() - t0
+                    t1 = time.time()                       # zweites Mal: Modell ist geladen -> reine Rechenzeit
+                    if self.server is not None:
+                        self._run_sd(init, d / 'f', 'a calm portrait, gentle motion', 2, 256, 160, 9, job,
+                                     (n + 1) * 100 // steps, (n + 1) * 100 // steps, hw=hw)
+                        res['gen'][dev] = round(time.time() - t1, 1)
+                        res['load'][dev] = round(max(0, total - res['gen'][dev]), 1)
+                    else:
+                        res['gen'][dev] = round(total, 1)
+                    if self.server:
+                        self.server.stop()
+                        self.server = None
+                for k, u in enumerate(updevs):
+                    if job['cancel']:
+                        raise RuntimeError('abgebrochen')
+                    job['note'] = 'Upscaler-Test …'
+                    r = self.upscaler.bench(u) if self.upscaler is not None and self.upscaler.available() else None
+                    if r:
+                        res['up'][str(u)] = r['sec']
+                    job['percent'] = (len(devices) + k + 1) * 100 // steps
+                shutil.rmtree(d, ignore_errors=True)
+                job.update(state='fertig', percent=100, note='', result=res)
+            except Exception as ex:  # noqa: BLE001
+                job.update(state='abgebrochen' if job['cancel'] else 'fehler', error=str(ex), result=res)
+
     def cancel(self, jid):
         j = self.jobs.get(jid)
         if j:
@@ -423,6 +706,9 @@ class AIVideo:
 
     def shutdown(self):
         """Beim Beenden des Programms laufende KI-Rechnungen stoppen (fertige Stücke bleiben gespeichert)."""
+        if self.server:
+            self.server.stop()
+            self.server = None
         for j in self.jobs.values():
             j['cancel'] = True
             p = j.get('proc')
@@ -492,27 +778,61 @@ class AIVideo:
                 share = 0.8 if up else 0.95                  # Anteil der Fortschrittsanzeige für die KI-Bewegung
                 prev = None
                 t_seg = []
+                W2, H2 = HD[bool(o['vertical'])]
+                # 1.9.0: Upscaler in eigenem Arbeitsfaden – auf der zweiten Grafikkarte gleichzeitig mit der KI-Bewegung
+                par = up and bool(self.hw.get('parallel'))
+                us = {'done': 0, 'cur': 0.0, 'err': None}
+                uq = queue.Queue()
+
+                def upworker():
+                    while True:
+                        i = uq.get()
+                        if i is None:
+                            return
+                        if us['err'] is None and not job['cancel']:
+                            try:
+                                self._upscale_segment(vd, i, W2, H2, job, lambda f: us.__setitem__('cur', f))
+                            except Exception as ex:  # noqa: BLE001
+                                us['err'] = ex
+                        us['done'] += 1
+                        us['cur'] = 0.0
+                uth = threading.Thread(target=upworker, daemon=True)
+                if up:
+                    uth.start()
                 for n, (idx, anchor) in enumerate(segs):
+                    if us['err']:
+                        raise us['err']
                     src = init if anchor else prev
-                    job['note'] = 'Stück %d von %d' % (n + 1, len(segs))
+                    job['note'] = 'Stück %d von %d%s' % (n + 1, len(segs), ' · Full HD: %d fertig' % us['done'] if par else '')
                     t0 = time.time()
                     already = (vd / ('segment-%03d.mp4' % idx)).is_file()
                     a, b = n / len(segs) * 100, (n + 1) / len(segs) * 100
                     prev = self._segment(vd, idx, src, prompt, sd + idx * 7919, W, H, frames, job,
-                                         int(a * share), int(a * share + (b - a) * share * (0.75 if up else 1)), o['quality'], ref=init, cmatch=cm)
+                                         int(a * share), int(b * share), o['quality'], ref=init, cmatch=cm)
                     if up:
-                        job['note'] = 'Stück %d von %d · KI-Upscaler (Full HD)' % (n + 1, len(segs))
-                        self._upscale_segment(vd, idx, *HD[bool(o['vertical'])], job,
-                                              int(a * share + (b - a) * share * 0.75), int(b * share))
+                        uq.put(idx)
+                        while not par and us['done'] <= n and uth.is_alive():      # eine Karte: nacheinander
+                            job['note'] = 'Stück %d von %d · KI-Upscaler (Full HD)' % (n + 1, len(segs))
+                            time.sleep(0.3)
                     if not already:
                         t_seg.append(time.time() - t0)
                     if t_seg:
                         left = (len(segs) - n - 1) * (sum(t_seg) / len(t_seg))
                         job['eta'] = int(left)
+                if up:
+                    uq.put(None)
+                    while uth.is_alive():
+                        if job['cancel']:
+                            raise RuntimeError('abgebrochen')
+                        f = (us['done'] + us['cur']) / len(segs)
+                        job['percent'] = max(job.get('percent', 0), int(share * 100 + (95 - share * 100) * f))
+                        job['note'] = 'KI-Upscaler (Full HD): Stück %d von %d' % (min(len(segs), us['done'] + 1), len(segs))
+                        time.sleep(0.4)
+                    if us['err']:
+                        raise us['err']
                 job['note'] = 'Stücke werden zusammengesetzt …'
                 clip = vd / ('ki-video-%ds%s.mp4' % (int(round(float(o['length']))), '-hd' if up else ''))
                 if up:
-                    W2, H2 = HD[bool(o['vertical'])]
                     ohd = vd / 'original-hd.png'
                     if not ohd.is_file():
                         org = cv2.cvtColor(cv2.imdecode(np.fromfile(str(init), np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
@@ -524,6 +844,8 @@ class AIVideo:
                            result={'clip': clip.relative_to(self.jobs_dir).as_posix(), 'seconds': self.duration(clip), 'key': o['key'], 'seed': sd})
             except Exception as ex:  # noqa: BLE001
                 job.update(state='abgebrochen' if job['cancel'] else 'fehler', error=str(ex))
+            finally:
+                self.release_server()
 
     # ---------- Zusammensetzen ----------
     def _frames(self, mp4, W, H):

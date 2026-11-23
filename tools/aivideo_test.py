@@ -14,6 +14,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import aivideo  # noqa: E402
 import upscale  # noqa: E402
+import hwinfo  # noqa: E402
 
 sd, ffmpeg, out = sys.argv[1], sys.argv[2], Path(sys.argv[3])
 UPDIR = sys.argv[sys.argv.index('--upscaler') + 1] if '--upscaler' in sys.argv else None
@@ -31,6 +32,8 @@ home = out / 'home'
 A = aivideo.AIVideo(home, Path(sd).parent.parent, Path(sd).parent.parent, ffmpeg)
 A.sd = sd
 say('Geräte:', A.devices())
+say('KI-Dienst (sd-server):', A.server_exe or 'fehlt')
+say('Hardware-Analyse:', json.dumps(hwinfo.analyze(A.devices(), home, A.need_gb()), ensure_ascii=False))
 
 # 1) Paket laden – genau wie beim Nutzer
 t0 = time.time()
@@ -77,7 +80,7 @@ def wait(jid):
 
 t0 = time.time()
 v = wait(A.start('variants', still, dict(opts, seeds=[11])))
-say('Variante:', v['state'], v['error'], 'in %d s' % (time.time() - t0))
+say('Variante:', v['state'], v['error'], 'in %d s' % (time.time() - t0), '· Weg:', 'sd-server' if A.server else 'sd-cli', A.server_error)
 if v['state'] != 'fertig':
     for lg in (home / 'aivideo' / 'jobs').rglob('sd.log'):
         say(lg.read_text('utf-8', 'replace')[-3000:])
@@ -97,6 +100,7 @@ say('Volle Länge:', v['state'], v['error'], v.get('result'), 'in %d s' % (time.
 if v['state'] != 'fertig':
     raise SystemExit('Volle Länge fehlgeschlagen')
 clip = A.clip_path(v['result']['clip'])
+say('Volle Länge über:', 'sd-server (Modell blieb geladen)' if A.server else 'sd-cli', A.server_error)
 say('Länge Ergebnis:', A.duration(clip), 's · Tempo je Stück:', A.speeds())
 
 # 3) Prüfen: erstes Bild ähnelt dem Startbild, es gibt Bewegung, keine kaputten (einfarbigen) Bilder
@@ -143,6 +147,18 @@ if '--quality' in sys.argv:
         fr = list(A._frames(A.jobs_dir / 'fedcba9876543210' / 'seed-7' / 'segment-000.mp4', 832, 480))
         pick = [fr[i] for i in (0, len(fr) // 3, 2 * len(fr) // 3, len(fr) - 1)]
         cv2.imwrite(str(out / 'qualitaet.png'), cv2.cvtColor(np.vstack([np.hstack(pick[:2]), np.hstack(pick[2:])]), cv2.COLOR_RGB2BGR))
-ok = corr > 0.5 and motion > 0.2 and flat > 3
+# Schnelltest der Hardware (wie Knopf „Schnelltest“) – auf GitHub nur Prozessor
+t0 = time.time()
+v = wait(A.start_bench(['cpu'], [-1] if A.upscaler is not None else []))
+say('Schnelltest:', v['state'], v['error'], v.get('result'), 'in %d s' % (time.time() - t0))
+bench_ok = v['state'] == 'fertig' and v['result']['gen'].get('cpu')
+# Vergleich: dasselbe Stück über sd-cli (Modell wird neu geladen)
+if A.server_exe:
+    A.shutdown()
+    A.hw = dict(A.hw, server=False)
+    t0 = time.time()
+    v = wait(A.start('variants', still, dict(opts, key='0123456789abcd00', seeds=[5])))
+    say('Gleiches Stück über sd-cli (lädt neu):', v['state'], 'in %d s' % (time.time() - t0), '· Tempo je Stück:', A.speeds())
+ok = bench_ok and corr > 0.5 and motion > 0.2 and flat > 3
 say('ERGEBNIS:', 'OK' if ok else 'AUFFÄLLIG')
 sys.exit(0 if ok else 2)

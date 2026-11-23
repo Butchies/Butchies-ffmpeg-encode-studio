@@ -418,6 +418,3 @@ def path_maps(path_norm, closed, both, W, H, thick_px, out_x, out_y):
     return x0, y0, bw, bh, L, T
 
 
-def circle_path(cx, cy, r_px_w, aspect, n=160):
-    """Kreis (in Pixeln rund) als normierte Punkte; aspect = Bildbreite/Bildhöhe."""
-    return [[cx + r_px_w * math.cos(a), cy + r_px_w * aspect * math.sin(a)] for a in np.linspace(0, 2 * math.pi, n, endpoint=False)]

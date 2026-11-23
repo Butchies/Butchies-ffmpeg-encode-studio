@@ -42,6 +42,7 @@
   <button type="button" class="btn ghost" id="learnBtn" title="Das hat die KI gelernt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 3.5a3 3 0 0 0-3 3 3 3 0 0 0-2 5.2 3 3 0 0 0 2 5.3 3.5 3.5 0 0 0 5.5 2.5V4.5a3 3 0 0 0-2.5-1zM14.5 3.5a3 3 0 0 1 3 3 3 3 0 0 1 2 5.2 3 3 0 0 1-2 5.3 3.5 3.5 0 0 1-5.5 2.5"/></svg><span class="lbl">KI lernt</span></button>
   <button type="button" class="btn ghost" id="queueBtn" title="Warteschlange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="lbl">Warteschlange</span><span class="badge" id="queueBadge" hidden>0</span></button>
   <button type="button" class="btn ghost" id="folderBtn" title="Meine Videos"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="lbl">Meine Videos</span></button>
+  <button type="button" class="btn ghost" id="setBtn" title="Einstellungen: Updates, KI-Hardware, Speicher"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span class="lbl">Einstellungen</span></button>
   <button type="button" class="btn ghost quit" id="quitBtn" title="Beenden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg><span class="lbl">Beenden</span></button>
  </nav>
  <div class="winctl" aria-label="Fenster">
@@ -54,7 +55,7 @@
 </header>
 
 <div class="bars">
-<div class="updbar" id="updBar" hidden><span id="updText"></span><button type="button" class="btn small glow" id="updGo">Jetzt herunterladen</button><button type="button" class="btn small ghost" id="updLater">Später</button></div>
+<div class="updbar" id="updBar" hidden><span id="updText"></span><button type="button" class="btn small glow" id="updGo">Jetzt aktualisieren</button><button type="button" class="btn small ghost" id="updLater">Später</button></div>
 <div class="warnbar" id="ffWarn" hidden>FFmpeg wurde nicht gefunden. Bitte <b>ffmpeg_encode Studio</b> neu installieren – der Installer bringt FFmpeg mit.</div>
 </div>
 
@@ -244,6 +245,7 @@
      <div class="field"><span>Länge</span>
       <div class="seg" id="aiLens" role="group" aria-label="Länge"><button type="button" data-v="10">10 s</button><button type="button" data-v="30">30 s</button><button type="button" data-v="60">1 Min</button><button type="button" data-v="120">2 Min</button><button type="button" data-v="0">Ganzer Song</button></div>
       <small class="mhint" id="aiLenHint"></small>
+      <small class="ai-hwline" id="aiHwLine"></small>
      </div>
     </div>
     <div class="ai-steps">
@@ -399,6 +401,20 @@
   <p class="hint">Das Programm lernt aus deinen Entscheidungen und wird mit jedem Video besser für dich – alles bleibt offline auf diesem PC.</p>
   <div class="ln-list" id="lnList"></div>
   <div class="dlg-actions"><button type="button" class="btn danger" id="lnResetAll">Alles vergessen</button><button type="button" class="btn glow" data-close>Schließen</button></div>
+ </div>
+</dialog>
+
+<!-- Einstellungen (1.9.0): Updates, KI-Hardware, Speicher -->
+<dialog id="setDlg" aria-labelledby="setTitle">
+ <div class="dlg wide">
+  <div class="dlg-head"><h2 id="setTitle">Einstellungen</h2><button type="button" class="x" data-close aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="set-tabs" role="tablist" id="setTabs">
+   <button type="button" role="tab" data-t="upd" aria-selected="true">⬆️ Updates</button>
+   <button type="button" role="tab" data-t="hw" aria-selected="false">🧠 KI-Hardware</button>
+   <button type="button" role="tab" data-t="mem" aria-selected="false">🗂️ Speicher</button>
+  </div>
+  <div class="set-body" id="setBody"></div>
+  <div class="dlg-actions"><button type="button" class="btn glow" data-close>Schließen</button></div>
  </div>
 </dialog>
 

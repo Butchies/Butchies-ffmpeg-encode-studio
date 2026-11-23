@@ -38,7 +38,7 @@ jobs:
           python -c "import sys,types; sys.modules.setdefault('av', types.ModuleType('av')); import faster_whisper, ctranslate2; print('faster-whisper', faster_whisper.__version__, 'ctranslate2', ctranslate2.__version__)" | Tee-Object -FilePath build.log -Append
           python -c "import onnxruntime as o, cv2, numpy; print('onnxruntime', o.__version__, o.get_available_providers(), 'opencv', cv2.__version__)" | Tee-Object -FilePath build.log
           python -m PyInstaller --onedir --noconsole --noconfirm --name ffmpeg_encode_Studio --icon icon.ico `
-            --add-data "ui;ui" --collect-all webview --hidden-import clr --hidden-import mark --hidden-import viz --hidden-import fx --hidden-import highlight --hidden-import lyrics --hidden-import learn --hidden-import aivideo --hidden-import upscale `
+            --add-data "ui;ui" --collect-all webview --hidden-import clr --hidden-import mark --hidden-import viz --hidden-import fx --hidden-import highlight --hidden-import lyrics --hidden-import learn --hidden-import aivideo --hidden-import upscale --hidden-import hwinfo `
             --collect-all ctranslate2 --collect-all faster_whisper --hidden-import tokenizers --exclude-module av `
             --collect-all onnxruntime --collect-submodules cv2 ffmpeg_encode_studio.py 2>&1 | Tee-Object -FilePath build.log -Append
           if (!(Test-Path dist\ffmpeg_encode_Studio\ffmpeg_encode_Studio.exe)) { exit 1 }
@@ -47,15 +47,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download -R leejet/stable-diffusion.cpp --pattern "*-bin-win-vulkan-x64.zip" -O sdcpp.zip --clobber
+          gh release download master-1117-0d71f96 -R leejet/stable-diffusion.cpp --pattern "*-bin-win-vulkan-x64.zip" -O sdcpp.zip --clobber
           if ($LASTEXITCODE -ne 0) { exit 1 }
           Expand-Archive sdcpp.zip -DestinationPath sdtmp -Force
           $cli = Get-ChildItem sdtmp -Recurse -Filter sd-cli.exe | Select-Object -First 1
           if (!$cli) { Get-ChildItem sdtmp -Recurse | Select-Object FullName; exit 1 }
           New-Item -ItemType Directory -Force dist\ffmpeg_encode_Studio\sdcpp | Out-Null
           Copy-Item "$($cli.DirectoryName)\*" dist\ffmpeg_encode_Studio\sdcpp -Recurse -Force
-          Remove-Item dist\ffmpeg_encode_Studio\sdcpp\sd-server.exe -ErrorAction SilentlyContinue
-          (gh release view -R leejet/stable-diffusion.cpp --json tagName -q .tagName) | Tee-Object -FilePath build.log -Append
+          if (-not (Test-Path dist\ffmpeg_encode_Studio\sdcpp\sd-server.exe)) { throw 'sd-server.exe fehlt (wird für die schnelle KI gebraucht)' }
+          'sd.cpp master-1117-0d71f96' | Tee-Object -FilePath build.log -Append
           "sdcpp: $([math]::Round(((Get-ChildItem dist\ffmpeg_encode_Studio\sdcpp -Recurse | Measure-Object Length -Sum).Sum / 1MB), 1)) MB" | Tee-Object -FilePath build.log -Append
           & dist\ffmpeg_encode_Studio\sdcpp\sd-cli.exe --list-devices 2>&1 | Tee-Object -FilePath build.log -Append
           "stable-diffusion.cpp (https://github.com/leejet/stable-diffusion.cpp) - MIT. KI-Video-Modell Wan 2.2 TI2V 5B (Apache-2.0) wird erst auf Wunsch geladen." | Out-File -Encoding utf8 dist\ffmpeg_encode_Studio\sdcpp\LIZENZ.txt

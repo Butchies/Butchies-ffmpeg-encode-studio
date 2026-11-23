@@ -68,6 +68,7 @@ Name: "{autodesktop}\ffmpeg_encode Studio"; Filename: "{app}\ffmpeg_encode_Studi
 [Run]
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Microsoft WebView2 wird eingerichtet …"; Flags: waituntilterminated; Check: NeedsWebView2
 Filename: "{app}\ffmpeg_encode_Studio.exe"; Description: "ffmpeg_encode Studio jetzt starten"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\ffmpeg_encode_Studio.exe"; Flags: nowait; Check: WizardSilent
 
 [UninstallRun]
 Filename: "{cmd}"; Parameters: "/c taskkill /f /im ffmpeg_encode_Studio.exe"; Flags: runhidden; RunOnceId: "StopStudio"
