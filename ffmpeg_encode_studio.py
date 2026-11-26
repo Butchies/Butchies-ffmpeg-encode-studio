@@ -2390,6 +2390,47 @@ def native_window(url):
     return True
 
 
+def phone_hardware_snapshot():
+    """Return hardware details without exposing local filesystem paths."""
+    memory = None
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+
+        class MemoryStatus(ctypes.Structure):
+            _fields_ = [
+                ('length', wintypes.DWORD), ('load', wintypes.DWORD),
+                ('total', ctypes.c_ulonglong), ('available', ctypes.c_ulonglong),
+                ('page_total', ctypes.c_ulonglong), ('page_available', ctypes.c_ulonglong),
+                ('virtual_total', ctypes.c_ulonglong), ('virtual_available', ctypes.c_ulonglong),
+                ('extended_available', ctypes.c_ulonglong),
+            ]
+
+        status = MemoryStatus()
+        status.length = ctypes.sizeof(status)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            memory = {'total_bytes': status.total, 'available_bytes': status.available}
+
+    storage = None
+    try:
+        target = Path(load_config().get('outdir') or default_outdir())
+        while not target.exists() and target.parent != target:
+            target = target.parent
+        usage = shutil.disk_usage(target)
+        storage = {'total_bytes': usage.total, 'free_bytes': usage.free}
+    except OSError:
+        pass
+
+    return {
+        'memory': memory,
+        'output_storage': storage,
+        'graphics': [
+            {key: card.get(key) for key in ('name', 'vendor', 'vram')}
+            for card in GPU
+        ],
+    }
+
+
 def start_phone_status():
     """Optional read-only API on the machine's private VPN address."""
     address = os.environ.get('BUTCHIES_PHONE_VPN_IP', '').strip()
@@ -2421,10 +2462,12 @@ def start_phone_status():
                 return
             with QLOCK:
                 jobs = [
-                    {key: JOBS[job_id].get(key) for key in ('id', 'state', 'percent', 'eta')}
+                    {key: JOBS[job_id].get(key) for key in ('id', 'state', 'percent', 'eta', 'fps', 'speed')}
                     for job_id in QUEUE if job_id in JOBS
                 ]
-            data = json.dumps({'version': VERSION, 'jobs': jobs}).encode('utf-8')
+            data = json.dumps({
+                'version': VERSION, 'jobs': jobs, 'hardware': phone_hardware_snapshot(),
+            }).encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Cache-Control', 'no-store')
