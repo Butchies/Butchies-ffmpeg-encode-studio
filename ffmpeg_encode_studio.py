@@ -2390,6 +2390,53 @@ def native_window(url):
     return True
 
 
+def start_phone_status():
+    """Optional read-only API on the machine's private VPN address."""
+    address = os.environ.get('BUTCHIES_PHONE_VPN_IP', '').strip()
+    if not address:
+        return
+    import ipaddress
+    import hmac
+
+    token = os.environ.get('BUTCHIES_ENCODE_PHONE_TOKEN', '')
+    if not re.fullmatch(r'[a-fA-F0-9]{64}', token):
+        raise ValueError('BUTCHIES_ENCODE_PHONE_TOKEN muss aus 64 Hex-Zeichen bestehen.')
+    vpn_range = ipaddress.ip_network('100.64.0.0/10')
+    if ipaddress.ip_address(address) not in vpn_range:
+        raise ValueError('BUTCHIES_PHONE_VPN_IP muss die private VPN-IP (100.64.0.0/10) sein.')
+    expected = ('Bearer ' + token).encode('ascii')
+
+    class PhoneStatusHandler(BaseHTTPRequestHandler):
+        def setup(self):
+            self.request.settimeout(5)
+            super().setup()
+
+        def do_GET(self):
+            authorization = self.headers.get('Authorization', '').encode('latin-1')
+            if not hmac.compare_digest(authorization, expected):
+                self.send_error(401)
+                return
+            if self.path != '/api/v1/status':
+                self.send_error(404)
+                return
+            with QLOCK:
+                jobs = [
+                    {key: JOBS[job_id].get(key) for key in ('id', 'state', 'percent', 'eta')}
+                    for job_id in QUEUE if job_id in JOBS
+                ]
+            data = json.dumps({'version': VERSION, 'jobs': jobs}).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+    phone_server = ThreadingHTTPServer((address, 8766), PhoneStatusHandler)
+    threading.Thread(target=phone_server.serve_forever, daemon=True).start()
+    return phone_server
+
+
 def main():
     HOME.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=hw_check, daemon=True).start()
@@ -2408,6 +2455,11 @@ def main():
             from webview.platforms import winforms, edgechromium  # noqa: F401
         print('native ok', flush=True)
         return
+    phone_status = None
+    try:
+        phone_status = start_phone_status()
+    except (OSError, ValueError) as exc:
+        print('Handyzugriff konnte nicht starten: %s' % exc, file=sys.stderr, flush=True)
     try:
         if '--no-window' not in sys.argv:
             if native_window(url):
@@ -2422,6 +2474,9 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        if phone_status is not None:
+            phone_status.shutdown()
+            phone_status.server_close()
         stop_all()
         time.sleep(0.3)
         shutil.rmtree(STAGE, ignore_errors=True)
