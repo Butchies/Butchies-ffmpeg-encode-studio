@@ -4,7 +4,7 @@ Alles per Drag & Drop: Song und Bild hineinziehen, Format, FPS, Fades und Länge
 Technik: Python-Standardbibliothek + FFmpeg (wird vom Installer mitgeliefert). Die Oberfläche läuft in einem
 rahmenlosen Programmfenster (WebView2 über pywebview); ohne WebView2 öffnet sich ein Edge/Chrome-App-Fenster.
 """
-import json, mimetypes, os, re, secrets, shutil, subprocess, sys, tempfile, threading, time, urllib.parse, webbrowser, zipfile
+import csv, ctypes, json, mimetypes, os, re, secrets, shutil, subprocess, sys, tempfile, threading, time, urllib.parse, webbrowser, zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -24,7 +24,7 @@ except Exception:  # noqa: BLE001
 
 APP_NAME = 'ffmpeg_encode Studio'
 APP_DIRNAME = 'ffmpeg_encode Studio'      # Ordnername für Einstellungen/Videos bleibt (deine Daten bleiben erhalten)
-VERSION = '1.10.0'
+VERSION = '1.11.0'
 WEBSITE = 'https://butchies-groove.duckdns.org'
 FROZEN = getattr(sys, 'frozen', False)
 BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -138,6 +138,7 @@ FFMPEG = find_tool('ffmpeg')
 AIV = aivideo.AIVideo(HOME, APP_DIR, BASE, FFMPEG, NO_WINDOW)     # KI-Video (freiwilliges Zusatz-Paket)
 UPS = upscale.Upscaler(MODEL_DIR)                                # KI-Upscaler (Full HD)
 AIV.upscaler = UPS
+AIV.blocker = lambda: any(j['state'] == 'läuft' for j in JOBS.values())   # 1.11.0: KI wartet auf laufende Umwandlung
 import atexit
 atexit.register(AIV.shutdown)
 FFPROBE = find_tool('ffprobe')
@@ -279,6 +280,8 @@ def clean_settings(s):
         out['fps'] = 30
     if out['fps'] not in FPS_LIST:
         out['fps'] = 30
+    if out.get('ai') and out.get('aiClip'):
+        out['fps'] = 24          # 1.11.0: KI-Video hat 24 Bilder/s – Endvideo gleich, keine doppelten Bilder, schneller
     for k in ('fadeIn', 'fadeOut'):
         try:
             out[k] = min(max(float(out[k]), 0.0), 15.0)
@@ -839,6 +842,13 @@ def worker():
             if not nxt:
                 QEVENT.clear()
                 continue
+        if AIV.lock.locked():                     # 1.11.0: KI-Video rechnet -> Umwandlung wartet, sonst doppelte Last
+            nxt['phase'] = 'Wartet, bis das KI-Video fertig ist …'
+            while AIV.lock.locked() and not nxt.get('cancel'):
+                time.sleep(1)
+            if nxt['state'] != 'wartet':
+                continue
+            nxt['phase'] = ''
         run_job(nxt)
 
 
@@ -1056,6 +1066,77 @@ def update_check():
     return res
 
 
+# ---------- 1.11.0 Arbeitsspeicher vor der KI prüfen + aufräumen ----------
+def ai_ram_need():
+    """Grob, was die KI-Video-Rechnung an freiem Arbeitsspeicher braucht (GB)."""
+    te_cpu = 'te=cpu' in ' '.join(AIV.backend_args()) or (AIV.hw.get('gen') or 'auto') in ('auto', 'cpu')
+    return 4.5 if te_cpu else 3.0          # mit --mmap kann Windows den Text-Teil bei Bedarf selbst auslagern
+
+
+def big_processes(n=6):
+    """Größte andere Programme (Name, GB) – nur zum Anzeigen, nichts wird ohne Klick beendet."""
+    if os.name != 'nt':
+        return []
+    try:
+        r = subprocess.run(['tasklist', '/fo', 'csv', '/nh'], capture_output=True, timeout=15, creationflags=NO_WINDOW)
+        agg = {}
+        for row in csv.reader(r.stdout.decode('mbcs', 'replace').splitlines()):
+            if len(row) < 5:
+                continue
+            name = row[0]
+            kb = int(re.sub(r'\D', '', row[4]) or 0)
+            if name.lower() in ('system', 'registry', 'memory compression', 'svchost.exe', 'dwm.exe', 'csrss.exe', 'explorer.exe',
+                                'ffmpeg_encode_studio.exe', 'sd-server.exe', 'sd-cli.exe', 'msedgewebview2.exe', 'lsass.exe', 'wininit.exe'):
+                continue
+            agg[name] = agg.get(name, 0) + kb
+        top = sorted(agg.items(), key=lambda x: -x[1])[:n]
+        return [{'name': k, 'gb': round(v / 1024 ** 2, 1)} for k, v in top if v > 300 * 1024]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def ai_memcheck():
+    total, free = hwinfo.ram_gb()
+    need = ai_ram_need()
+    return {'total': total, 'free': free, 'need': need, 'ok': not free or free >= need, 'procs': big_processes() if free and free < need else []}
+
+
+def ai_cleanup():
+    """Eigenen Speicher freigeben: geladene Hilfs-KIs, alter KI-Dienst, Python-Müll; Windows gibt ungenutzte Seiten zurück."""
+    before = hwinfo.ram_gb()[1]
+    if not AIV.lock.locked() and AIV.server:
+        AIV.server.stop()
+        AIV.server = None
+    with UPS.lock:
+        UPS.sess = None
+    if SAM is not None:
+        SAM.enc = SAM.dec = None
+    if DEPTH is not None:
+        DEPTH.sess = None
+    if not any(h.get('state') == 'läuft' for h in HL_JOBS.values()):
+        LYRICS.model = None                      # Songtext-KI lädt beim nächsten Mal von selbst neu
+    HL_CACHE.clear()
+    import gc
+    gc.collect()
+    if os.name == 'nt':
+        try:
+            ctypes.windll.psapi.EmptyWorkingSet(ctypes.windll.kernel32.GetCurrentProcess())
+        except Exception:  # noqa: BLE001
+            pass
+    time.sleep(0.5)
+    after = hwinfo.ram_gb()[1]
+    return dict(ai_memcheck(), freed=round(max(0, after - before), 1))
+
+
+def close_process(name):
+    """Ein Programm auf ausdrücklichen Wunsch beenden (aus der Liste der großen Programme)."""
+    allowed = {p['name'] for p in big_processes(12)}
+    if os.name != 'nt' or name not in allowed:
+        return False
+    r = subprocess.run(['taskkill', '/im', name], capture_output=True, timeout=20, creationflags=NO_WINDOW)
+    return r.returncode == 0
+
+
 UPD_TASK = {'state': 'idle', 'percent': 0, 'phase': '', 'error': ''}
 CLOSE_APP = [None]
 
@@ -1150,10 +1231,12 @@ def hw_bench_watch(jid):
         if not v or v['state'] not in ('läuft', 'wartet'):
             break
         time.sleep(2)
-    if v and v.get('result') and (v['result'].get('gen') or v['result'].get('up')):
+    r = (v or {}).get('result') or {}
+    gen = r.get('gpus') if 'gpus' in r else r.get('gen')        # Training (1.11.0) oder alter Schnelltest
+    if isinstance(gen, dict) and any(gen.values()):
         conf = load_config()
         h = conf.setdefault('ai_hw', {})
-        h['bench'] = dict(v['result'], t=int(time.time()))
+        h['bench'] = {'gen': {k: x for k, x in gen.items() if x}, 'up': r.get('up') or {}, 't': int(time.time())}
         save_config(conf)
         hw_analyze(True)
 
@@ -1395,6 +1478,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, update_check())
         if path == '/api/update/task':
             return self.send_json(200, {k: v for k, v in UPD_TASK.items() if k != 'cancel'})
+        if path == '/api/ai/memcheck':
+            return self.send_json(200, ai_memcheck())
         if path == '/api/hw':
             return self.send_json(200, hw_analyze())
         if path == '/api/settings':
@@ -1563,10 +1648,18 @@ class Handler(BaseHTTPRequestHandler):
                     h['server'] = bool(data['server'])
                 save_config(conf)
                 return self.send_json(200, hw_analyze())
+            if path == '/api/ai/cleanup':
+                return self.send_json(200, ai_cleanup())
+            if path == '/api/ai/close-app':
+                ok = close_process(str(data.get('name') or ''))
+                time.sleep(1.5)
+                return self.send_json(200, dict(ai_memcheck(), closed=ok))
             if path == '/api/ai/train':
-                hw_analyze()
+                d = hw_analyze()
+                devs = [g['vulkan'] for g in d['gpus'] if g.get('vulkan')] if hw_choice()['gen'] == 'auto' else []
                 try:
-                    jid = AIV.start_training('good' if data.get('quality') == 'good' else 'fast')
+                    jid = AIV.start_training(data.get('quality') if data.get('quality') in aivideo.QUALITIES else 'fast', devs)
+                    threading.Thread(target=hw_bench_watch, args=(jid,), daemon=True).start()
                 except RuntimeError as ex:
                     return self.send_json(400, {'error': str(ex)})
                 return self.send_json(200, {'id': jid})
@@ -1576,16 +1669,6 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/hw/refresh':
                 AIV._devices = None
                 return self.send_json(200, hw_analyze(True))
-            if path == '/api/hw/bench':
-                d = hw_analyze()
-                devs = [g['vulkan'] for g in d['gpus'] if g.get('vulkan')]
-                ups = [g['dxgi'] for g in d['gpus'] if g['dxgi'] >= 0] if UPS.available() else []
-                try:
-                    jid = AIV.start_bench(devs, ups)
-                except RuntimeError as ex:
-                    return self.send_json(400, {'error': str(ex)})
-                threading.Thread(target=hw_bench_watch, args=(jid,), daemon=True).start()
-                return self.send_json(200, {'id': jid})
             if path == '/api/ai/cache-clear':
                 try:
                     return self.send_json(200, {'ai_cache': AIV.clear_cache()})
@@ -2172,9 +2255,14 @@ def ki_window_open(url, frame):
     if os.name == 'nt':
         two_monitor_gpu_fix()          # nur wenn die neue KI-Video-Funktion benutzt wird (wirkt ab dem nächsten Start)
     if rec['win'] is not None:
-        try:
-            rec['win'].show()
-            rec['win'].restore()
+        try:                                    # 1.11.0: nur nach vorne holen (restore() aus dem Brücken-Faden konnte hängen)
+            h = rec['f'].handle() if os.name == 'nt' and rec.get('f') else 0
+            if h:
+                u = ctypes.windll.user32
+                u.ShowWindow(h, 9 if u.IsIconic(h) else 5)
+                u.SetForegroundWindow(h)
+            else:
+                rec['win'].show()
             return True
         except Exception:  # noqa: BLE001
             rec['win'] = None
@@ -2243,11 +2331,17 @@ def ki_window_open(url, frame):
                 return 1
 
         def show_main(self):
-            try:
-                frame.win.show()
-                frame.win.restore()
-            except Exception:  # noqa: BLE001
-                pass
+            # 1.11.0: nicht im Brücken-Faden warten (das blockierte das KI-Fenster) – Hauptfenster in eigenem Faden holen
+            def go():
+                try:
+                    frame.win.show()
+                    h = frame.handle() if os.name == 'nt' else 0
+                    if h:
+                        ctypes.windll.user32.ShowWindow(h, 9 if ctypes.windll.user32.IsIconic(h) else 5)
+                        ctypes.windll.user32.SetForegroundWindow(h)
+                except Exception:  # noqa: BLE001
+                    pass
+            threading.Thread(target=go, daemon=True).start()
             return True
 
     u = url.replace('/#', '/?ki=1#', 1)

@@ -238,7 +238,7 @@
       <small class="mhint" id="aiWhereHint"></small>
      </div>
      <div class="field"><span>Qualität</span>
-      <div class="seg" id="aiQual" role="group" aria-label="Qualität"><button type="button" data-v="fast">Schnell</button><button type="button" data-v="good">Beste</button></div>
+      <div class="seg" id="aiQual" role="group" aria-label="Qualität"><button type="button" data-v="turbo">Sehr schnell</button><button type="button" data-v="fast">Schnell</button><button type="button" data-v="good">Beste</button></div>
       <small class="mhint" id="aiQualHint"></small>
       <label class="ai-up"><button type="button" class="switch" id="aiUpSw" role="switch" aria-checked="true" aria-label="KI-Upscaler"><i></i></button><span><b>KI-Upscaler auf Full HD</b><small id="aiUpHint">Rechnet das KI-Video mit einer zweiten KI scharf auf 1920 × 1080 hoch.</small></span></label>
      </div>
@@ -252,7 +252,8 @@
      <div class="ai-step"><b>1</b><div><button type="button" class="btn accent" id="aiVarBtn">3 Varianten erzeugen</button><small id="aiVarHint"></small></div></div>
      <div class="ai-vars" id="aiVars"></div>
      <div class="ai-step"><b>2</b><div><button type="button" class="btn glow" id="aiFullBtn" disabled>Volle Länge berechnen</button><small id="aiFullHint">Zuerst eine Variante auswählen.</small></div></div>
-     <div class="ai-prog" id="aiProg" hidden><div class="bar"><i id="aiBar"></i></div><div class="ai-prog-row"><small id="aiProgText"></small><button type="button" class="btn tiny danger" id="aiCancel">Abbrechen</button></div></div>
+     <div class="ai-prog" id="aiProg" hidden><div class="bar"><i id="aiBar"></i></div><div class="ai-prog-row"><small id="aiProgText"></small><button type="button" class="btn tiny danger" id="aiCancel">Abbrechen</button></div>
+      <video id="aiLive" class="ai-live" muted loop playsinline hidden></video><small id="aiLiveCap" class="mhint" hidden></small></div>
      <div class="ai-result" id="aiResult" hidden></div>
      <div class="ai-fb" id="aiFb" hidden>
       <div class="ai-fb-head"><b>Wie gefällt dir das?</b><small id="aiFbWhat"></small></div>
@@ -264,7 +265,9 @@
      </div>
      <div class="ai-fixbar" id="aiFixBar" hidden></div>
     </div>
-    <div class="ai-open" id="aiOpenRow" hidden><button type="button" class="btn glow" id="aiOpenWin">🎬 KI-Video-Studio öffnen</button><small>Öffnet sich als eigenes Fenster – am besten auf dem 2. Monitor.</small></div>
+   </div>
+    <div class="ai-open" id="aiOpenRow" hidden><button type="button" class="btn glow" id="aiOpenWin">🎬 KI-Video-Studio öffnen</button><small>Öffnet sich als eigenes Fenster – am besten auf dem 2. Monitor.</small>
+     <button type="button" class="ai-mini" id="aiMini" hidden title="Zum KI-Video-Studio"><video id="aiMiniLive" muted loop playsinline hidden></video><span><span class="bar"><i id="aiMiniBar"></i></span><small id="aiMiniText"></small></span></button></div>
    </div>
   </div>
 
@@ -285,7 +288,6 @@
     <label class="field"><span>Start</span><input id="tStart" inputmode="numeric" placeholder="0:00" autocomplete="off"></label>
     <label class="field"><span>Ende <small>(leer = Song-Ende)</small></span><input id="tEnd" inputmode="numeric" placeholder="Song-Ende" autocomplete="off"></label>
     <div class="field"><span>Videolänge</span><div class="readout"><b id="durOut">0:00</b><button type="button" class="btn tiny" id="resetTime">= ganzer Song</button></div></div>
-   </div>
    <div class="notes" id="notes" role="status"></div>
   </div>
 
@@ -415,6 +417,15 @@
   </div>
   <div class="set-body" id="setBody"></div>
   <div class="dlg-actions"><button type="button" class="btn glow" data-close>Schließen</button></div>
+ </div>
+</dialog>
+
+<!-- 1.11.0: Arbeitsspeicher knapp -->
+<dialog id="ramDlg" aria-labelledby="ramTitle">
+ <div class="dlg">
+  <div class="dlg-head"><h2 id="ramTitle">Arbeitsspeicher wird knapp</h2></div>
+  <div id="ramBody" class="ram-body"></div>
+  <div class="dlg-actions"><button type="button" class="btn ghost" id="ramCancel">Abbrechen</button><button type="button" class="btn" id="ramAnyway">Trotzdem starten</button><button type="button" class="btn glow" id="ramGo">Aufräumen &amp; starten</button></div>
  </div>
 </dialog>
 

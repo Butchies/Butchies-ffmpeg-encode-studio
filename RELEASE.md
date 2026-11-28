@@ -1,4 +1,4 @@
-**ffmpeg_encode Studio 1.10.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
+**ffmpeg_encode Studio 1.11.0** – MP3 + Bild → fertiges YouTube-Video (4K, 1440p, 1080p, Shorts 9:16, Shorts 4K).
 
 **Installieren:** `ffmpeg_encode_Studio-Setup.exe` herunterladen und starten. Es werden keine Administratorrechte gebraucht.
 FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingerichtet.
@@ -9,6 +9,16 @@ FFmpeg mit allen Codecs ist dabei, WebView2 wird bei Bedarf automatisch eingeric
 - Audio-Visualizer (Wellenform/Spektrum) in Design- oder eigener Farbe
 - Grafikkarte automatisch (NVIDIA NVENC, Intel Quick Sync, AMD AMF), sonst CPU – mit automatischem Rückfall
 - Fortschritt in Prozent, Warteschlange, 7 Designs und Start-/Abschieds-Animation der Butchies-Webseite
+
+**Neu in 1.11.0 – stabiler, schneller, aufgeräumt**
+- **Arbeitsspeicher-Prüfung vor der KI:** ist zu wenig frei, kommt vorher ein Hinweis mit „Aufräumen & starten“ (gibt eigenen Speicher frei, zeigt die größten anderen Programme – beenden nur per Klick). Stürzt die KI trotzdem ab, kommt eine klare Meldung statt Stille
+- **Weniger Arbeitsspeicher:** die KI blendet ihre Modelldateien ein statt sie zu kopieren (ca. 3 GB weniger fester Speicher)
+- **Neue Stufe „Sehr schnell (640 × 352)“** – danach macht der KI-Upscaler das Bild scharf
+- **Live mitschauen:** jedes fertige Stück läuft sofort als Vorschau, während die KI am nächsten rechnet
+- **Hauptfenster-Knopf repariert:** das Hauptfenster zeigt jetzt eine kleine Live-Anzeige (Fortschritt + Vorschau) des KI-Videos; Klick darauf holt das KI-Fenster zurück. Die Kurz-Anzeige war vorher versehentlich unsichtbar
+- **24 Bilder/s:** Videos mit KI-Video laufen automatisch mit 24 Bildern/s – wie die KI selbst, keine doppelten Bilder, schneller
+- **Kein doppeltes Rechnen:** läuft eine KI-Video-Rechnung, wartet die normale Umwandlung (und umgekehrt)
+- **Aufgeräumt:** Schnelltest + Training zu einem „KI-Training“ zusammengelegt (misst alle Grafikkarten und Einstellungen), doppelte KI-Video-Kachel und doppelter Update-Kasten entfernt
 
 **Neu in 1.10.0 – die KI optimiert sich selbst**
 - **KI-Training** (⚙️ Einstellungen → 🧠 KI-Hardware): probiert alle Tempo-Einstellungen des KI-Motors (Flash-Attention, Direkt-Faltung, Text-Teil auf Karte/Prozessor, Auslagern) mit einem echten Stück auf deiner Grafikkarte aus und nimmt danach immer die schnellste, die sicher läuft

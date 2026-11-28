@@ -133,9 +133,11 @@ function renderFits() {
     box.append(el('button', { type: 'button', class: 'opt', 'aria-pressed': String(S.settings.fit === id), onclick: () => set('fit', id) },
       el('span', { class: 'tx' }, el('b', {}, name), el('small', {}, sub))));
 }
+const aiFps = () => !!(S.settings && S.settings.ai && S.settings.aiClip);   // 1.11.0: mit KI-Video immer 24 Bilder/s
 function renderFps() {
-  const box = $('#fpsSeg'); box.textContent = '';
-  for (const f of [24, 25, 30, 50, 60]) box.append(el('button', { type: 'button', 'aria-pressed': String(S.settings.fps === f), onclick: () => set('fps', f) }, String(f)));
+  const box = $('#fpsSeg'); box.textContent = ''; const lock = aiFps(), cur = lock ? 24 : S.settings.fps;
+  for (const f of [24, 25, 30, 50, 60]) box.append(el('button', { type: 'button', 'aria-pressed': String(cur === f), disabled: lock && f !== 24,
+    title: lock ? 'Mit KI-Video immer 24 Bilder/s – so rechnet auch die KI, keine doppelten Bilder' : '', onclick: () => set('fps', f) }, String(f)));
 }
 function renderEnc() {
   const box = $('#encGrid'); box.textContent = '';
@@ -1048,8 +1050,6 @@ function renderFx() {
   if (!tb.childElementCount) {
     info.effects.forEach(e => tb.append(el('button', { type: 'button', class: 'fxtile', 'data-id': e.id, title: e.name, 'aria-label': e.name, onclick: () => setFx(e.id) },
       el('span', { class: 'fx-ic', 'aria-hidden': 'true', html: `<svg viewBox="0 0 24 24">${FX_ICON[e.id] || ''}</svg>` }), el('span', {}, e.short))));
-    tb.append(el('button', { type: 'button', class: 'fxtile ai-tile', title: 'KI-Video – echte Bewegung aus deinem Bild', 'aria-label': 'KI-Video öffnen', onclick: openAiCard },
-      el('em', {}, 'NEU'), el('span', { class: 'fx-ic', 'aria-hidden': 'true' }, '🎬'), el('span', {}, 'KI-Video')));
   }
   $$('.fxtile').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.id === s.fx)));
   const cur = info.effects.find(e => e.id === s.fx) || info.effects[0];
@@ -1288,7 +1288,8 @@ function renderAi() {
   $$('#aiQual button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === s.aiQual)));
   $$('#aiLens button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === s.aiLen)));
   $('#aiWhereHint').textContent = s.aiArea === 'mask' ? 'Die Fläche malst du im Vorschaubild oben („Markieren“ → 🎬 KI-Video).' : 'Das ganze Bild bewegt sich.';
-  $('#aiQualHint').textContent = s.aiQual === 'good' ? '1280 × 704 – schöner, braucht aber etwa 3–4× so lange.' : '832 × 480 – deutlich schneller, wird auf dein Videoformat hochgerechnet.';
+  $('#aiQualHint').textContent = { turbo: '640 × 352 – am schnellsten, der KI-Upscaler macht es danach scharf. Die KI wird bei so kleiner Größe etwas weicher.',
+    good: '1280 × 704 – schöner, braucht aber etwa 3–4× so lange.' }[s.aiQual] || '832 × 480 – guter Mittelweg, wird auf dein Videoformat hochgerechnet.';
   const inf = AI.info, run = !!AI.job;
   const est = inf && inf.estimate, ev = inf && inf.estimate_variants;
   $('#aiLenHint').textContent = !inf ? '' : `${inf.length >= 60 ? dur(inf.length) : Math.round(inf.length) + ' s'} = ${est.segments} Stücke · Rechenzeit ca. ${dur(est.seconds)}` + (est.measured ? '' : ' (grobe Schätzung – wird nach der ersten Variante genauer)');
@@ -1429,6 +1430,7 @@ function aiPollStatus() {
 }
 async function aiStart(kind) {
   if (!S.image) { toast('Zuerst ein Bild hineinziehen'); return }
+  if (!await ramCheck()) return;
   try {
     const d = await api('/api/ai/start', Object.assign({ kind, image: S.image.token, audio: S.audio && S.audio.token, settings: S.settings, seed: AI.seed }, aiFixArgs()));
     AI.job = d.id; AI.jobKind = kind; $('#aiProg').hidden = false; renderAi(); aiPollJob();
@@ -1446,10 +1448,12 @@ function aiPollJob() {
   clearTimeout(AI.timer);
   AI.timer = setTimeout(async () => {
     let j; try { j = await api('/api/ai/job/' + AI.job) } catch (_) { AI.job = ''; renderAi(); return }
-    $('#aiBar').style.width = (j.percent || 0) + '%';
-    $('#aiProgText').textContent = `${j.percent || 0} % · ${j.note || (j.state === 'wartet' ? 'wartet …' : 'läuft …')}` + (j.eta ? ` · noch ca. ${dur(j.eta)}` : '');
+    const txt = `${j.percent || 0} % · ${j.note || (j.state === 'wartet' ? 'wartet …' : 'läuft …')}` + (j.eta ? ` · noch ca. ${dur(j.eta)}` : '');
+    $('#aiBar').style.width = (j.percent || 0) + '%'; $('#aiProgText').textContent = txt;
+    $('#aiMiniBar').style.width = (j.percent || 0) + '%'; $('#aiMiniText').textContent = txt; $('#aiMini').hidden = false;
+    aiLive(j);
     if (j.state === 'läuft' || j.state === 'wartet') { aiPollJob(); return }
-    AI.job = ''; $('#aiProg').hidden = true;
+    AI.job = ''; $('#aiProg').hidden = true; $('#aiMini').hidden = true; aiLive(null);
     if (j.state === 'fertig' && j.result) {
       if (AI.jobKind === 'variants') { toast('✓ 3 Varianten fertig – wähle die schönste aus'); if (!AI.seed) AI.seed = j.result.variants[Math.max(0, j.result.tip)].seed }
       else { aiPatch({ aiClip: j.result.clip, ai: true }); AI.view = j.result.clip; toast('✓ KI-Video ist fertig und wird beim Umwandeln verwendet') }
@@ -1458,6 +1462,54 @@ function aiPollJob() {
   }, 1500);
 }
 refreshAi();
+$('#aiMini').onclick = () => openAiCard();
+// 1.11.0: Hauptfenster (kompakt) holt sich KI-Aufträge, die im KI-Fenster gestartet wurden, und zeigt sie klein an
+setInterval(() => { if (!AI.job && !KIWIN && NATIVE_KI() && document.visibilityState === 'visible') refreshAi() }, 4000);
+function aiLive(j) {             // Live-Vorschau: das zuletzt fertige Stück läuft in Schleife, während die KI weiterrechnet
+  for (const id of ['aiLive', 'aiMiniLive']) {
+    const v = $('#' + id); if (!v) continue;
+    const src = j && j.preview ? '/api/ai/video?p=' + encodeURIComponent(j.preview) : '';
+    v.hidden = !src;
+    if (src && v.dataset.src !== src) { v.dataset.src = src; v.src = src; v.play().catch(() => {}) }
+    if (!src && v.dataset.src) { v.removeAttribute('src'); v.dataset.src = ''; v.load() }
+  }
+  const c = $('#aiLiveCap'); if (c) { c.hidden = !(j && j.preview); if (j && j.preview) c.textContent = `▶ Live: Stück ${j.preview_n} ist fertig – die KI rechnet schon am nächsten` }
+}
+async function ramCheck() {      // 1.11.0: vor der KI prüfen, ob genug Arbeitsspeicher frei ist
+  let m; try { m = await api('/api/ai/memcheck') } catch (_) { return true }
+  if (m.ok) return true;
+  return new Promise(res => {
+    const d = $('#ramDlg'), body = $('#ramBody');
+    const draw = m => {
+      body.textContent = '';
+      body.append(el('p', {}, 'Die KI braucht etwa ', el('b', {}, gbTxt(m.need)), ' freien Arbeitsspeicher – gerade sind nur ', el('b', {}, gbTxt(m.free)), ` von ${gbTxt(m.total)} frei. Wird es zu knapp, beendet Windows die KI mitten in der Rechnung.`),
+        el('p', {}, '„Aufräumen“ gibt den Speicher frei, den dieses Programm selbst nicht braucht (Hilfs-KIs, alte Reste).'));
+      if (m.procs && m.procs.length) {
+        body.append(el('p', { class: 'hint' }, 'Diese Programme belegen gerade am meisten – schließ sie am besten selbst (dann geht nichts Ungespeichertes verloren) oder hier per Klick:'));
+        const l = el('div', { class: 'ram-list' });
+        for (const p of m.procs) l.append(el('div', { class: 'ram-row' }, el('span', {}, el('b', {}, p.name.replace(/\.exe$/i, '')), ' · ' + gbTxt(p.gb)),
+          el('button', { type: 'button', class: 'btn tiny danger', onclick: async e => {
+            if (!await ask('Programm beenden?', `„${p.name}“ wird geschlossen. Nicht gespeicherte Arbeit darin geht verloren.`, 'Beenden')) return;
+            e.target.disabled = true; try { draw(await api('/api/ai/close-app', { name: p.name })) } catch (er) { toast(er.message, true) } } }, 'Beenden')));
+        body.append(l);
+      }
+      if (m.ok) body.append(el('p', {}, el('b', {}, '✓ Jetzt ist genug frei.')));
+      $('#ramGo').textContent = m.ok ? 'Starten' : 'Aufräumen & starten';
+    };
+    draw(m);
+    const done = v => { d.close(); res(v) };
+    $('#ramGo').onclick = async () => {
+      $('#ramGo').disabled = true;
+      try { const r = await api('/api/ai/cleanup', {}); if (r.freed) toast(`✓ ${gbTxt(r.freed)} freigegeben`);
+        if (r.ok) return done(true);
+        draw(r); toast('Immer noch zu wenig frei – bitte ein großes Programm schließen oder „Trotzdem starten“.', true);
+      } catch (e) { toast(e.message, true) } finally { $('#ramGo').disabled = false }
+    };
+    $('#ramAnyway').onclick = () => done(true);
+    $('#ramCancel').onclick = () => done(false);
+    d.showModal();
+  });
+}
 
 /* ---------- Shorts-Helfer: Länge + beste Stelle (KI) ---------- */
 const HL = { id: '', timer: 0, res: null, stopAt: 0, lyrTimer: 0 };
@@ -1631,7 +1683,8 @@ function changed(what) {
   if (document.activeElement !== $('#tEnd')) $('#tEnd').value = s.end;
   const f = fmtOf(s.fmt);
   $('#resChip').textContent = f[2].split(' · ')[0];
-  $('#fpsChip').textContent = s.fps + ' fps';
+  $('#fpsChip').textContent = (aiFps() ? 24 : s.fps) + ' fps';
+  renderFps();
   $('#kindChip').textContent = f[3] ? 'Shorts · 9:16' : 'Video · 16:9';
   $('#frame').classList.toggle('tall', f[3]);
   if (what === 'fmt' || what === 'fit' || what === 'image') refreshStill();
@@ -2167,10 +2220,6 @@ async function drawLearn() {
     A.n ? el('p', {}, 'Aus ', el('b', {}, `${A.n} Bewertung${A.n === 1 ? '' : 'en'}`), ' gelernt' + (A.learned_names.length ? ' – gibt jetzt automatisch mit: ' : '.'), A.learned_names.length ? el('b', {}, A.learned_names.join(', ')) : '')
       : el('p', {}, 'Noch nichts gelernt. Bewerte deine KI-Videos mit Sternen und sag, was anders werden soll – die KI passt sich an.'),
     Object.keys(A.scores || {}).length ? el('p', {}, 'Deine Noten: ' + Object.entries(A.scores).map(([m, v]) => `${mname(m)} ${String(v).replace('.', ',')} ★`).join(' · ')) : null));
-  const u = LN.update;
-  box.append(lnCard('⬆️ Neue KI-Versionen', '',
-    el('p', {}, u ? (u.newer ? `Neue Version ${u.latest} ist da (du hast ${u.current}).` : u.latest ? `Du hast die neueste Version (${u.current}).` : 'Keine Verbindung zu GitHub – wird beim nächsten Start erneut geprüft.') : 'Wird geprüft …'),
-    u && u.newer ? el('div', { class: 'ln-acts' }, el('button', { type: 'button', class: 'btn small glow', onclick: () => { $('#learnDlg').close(); openSettings('upd', true) } }, 'Jetzt aktualisieren')) : null));
 }
 async function resetLearn(part) {
   const what = { hl: 'die gelernte beste Stelle', words: 'die gelernten Songtext-Wörter und korrigierten Texte', style: 'deinen gelernten Stil', ai: 'die KI-Video-Bewertungen' }[part] || 'alles Gelernte';
@@ -2271,24 +2320,6 @@ async function drawHw(box, fresh) {
     el('div', { class: 'set-row' }, el('span', {}, el('b', {}, 'KI-Bewegung rechnet auf'), el('small', {}, a.te === 'cpu' && a.gen !== 'cpu' ? 'Text-Teil der KI im Arbeitsspeicher, damit der Grafikspeicher reicht' : 'alle Teile auf dieser Karte')), genSel),
     el('div', { class: 'set-row' }, el('span', {}, el('b', {}, 'KI-Upscaler rechnet auf'), el('small', {}, a.parallel ? '✓ gleichzeitig mit der KI-Bewegung (zwei Karten)' : 'nach jedem Stück (gleiche Karte)')), upSel),
     el('div', { class: 'set-row' }, el('span', {}, el('b', {}, 'KI zwischen den Stücken geladen lassen'), el('small', {}, h.server_ok ? (h.server_error ? '⚠️ ' + h.server_error + ' – es wird der langsamere Weg genutzt.' : 'Viel schneller: die 8 GB werden nur einmal pro Auftrag geladen.') : 'In dieser Version nicht enthalten.')), srv)));
-  const bt = el('button', { type: 'button', class: 'btn small glow', disabled: !h.ai_ready }, h.bench && h.bench.t ? 'Schnelltest wiederholen' : 'Schnelltest starten');
-  const bp = el('div', { hidden: true }, el('div', { class: 'set-prog' }, el('i')), el('p', {}, ''));
-  bt.onclick = async () => {
-    try { const r = await api('/api/hw/bench', {}); bt.disabled = true; bp.hidden = false;
-      clearInterval(SET.benchPoll);
-      SET.benchPoll = setInterval(async () => {
-        const v = await api('/api/ai/job/' + r.id).catch(() => null); if (!v) return;
-        bp.querySelector('i').style.width = v.percent + '%'; bp.querySelector('p').textContent = `${v.percent} % · ${v.note || ''}`;
-        if (!['läuft', 'wartet'].includes(v.state)) {
-          clearInterval(SET.benchPoll); SET.benchPoll = 0;
-          if (v.state === 'fertig') { toast('✓ Schnelltest fertig – die schnellste Karte wird jetzt benutzt'); setTimeout(async () => { if (SET.tab === 'hw' && $('#setDlg').open) { const f = await api('/api/hw'); $('#setBody').textContent = ''; drawHw($('#setBody'), f); renderAiHw() } }, 2500) }
-          else toast(v.error || 'Schnelltest abgebrochen', true);
-        }
-      }, 1000);
-    } catch (e) { toast(e.message, true) }
-  };
-  box.append(lnCard('⏱️ Schnelltest', '', el('p', {}, h.ai_ready ? 'Misst jede Grafikkarte mit einem kleinen KI-Stück und dem Upscaler (dauert ein paar Minuten). Danach nimmt „Automatisch“ die wirklich schnellste Karte.' : 'Erst das KI-Video-Paket laden (Karte „KI-Video“), dann kann getestet werden.'),
-    el('div', { class: 'ln-acts' }, bt, el('button', { type: 'button', class: 'btn small', onclick: async () => { const f = await api('/api/hw/refresh', {}); $('#setBody').textContent = ''; drawHw($('#setBody'), f) } }, 'Neu erkennen')), bp));
   // 1.10.0: Training + Gedächtnis
   const T = h.tuner || { speed: [], ratings: 0 };
   const qn = { fast: 'Schnell', good: 'Beste Qualität', test: 'Test' };
@@ -2304,19 +2335,19 @@ async function drawHw(box, fresh) {
         if (!['läuft', 'wartet'].includes(v.state)) {
           clearInterval(SET.benchPoll); SET.benchPoll = 0;
           if (v.state === 'fertig') toast(`✓ Training fertig – ab jetzt: „${v.result.best_name}“`); else toast(v.error || 'Training abgebrochen', true);
-          if ($('#setDlg').open && SET.tab === 'hw') { const f = await api('/api/hw'); $('#setBody').textContent = ''; drawHw($('#setBody'), f) }
+          if ($('#setDlg').open && SET.tab === 'hw') setTimeout(async () => { const f = await api('/api/hw'); $('#setBody').textContent = ''; drawHw($('#setBody'), f); renderAiHw() }, 2500)
         }
       }, 1000);
     } catch (e) { toast(e.message, true) }
   };
-  box.append(lnCard('🏋️ KI-Training & Gedächtnis', '',
-    el('p', {}, `Die KI merkt sich, wie sie auf deinem PC am schnellsten läuft (Rezept gerade: „${h.recipe_name || 'Standard'}“), weicht bei zu wenig Grafikspeicher selbst aus und lernt aus deinen Sternen, welche Varianten gut aussehen (${T.ratings} Bewertungen, „🤖 KI-Tipp“ bei den Varianten).`),
+  box.append(lnCard('🏋️ KI-Training', '',
+    el('p', {}, `Misst jede Grafikkarte, nimmt die schnellste und probiert dort jede Einstellung einmal aus. Die KI merkt sich das Ergebnis, lernt bei jeder Rechnung weiter und weicht bei zu wenig Grafikspeicher selbst aus. Gerade benutzt: „${h.recipe_name || 'Standard'}“.`),
     ...(rows.length ? rows : [el('p', { class: 'hint' }, 'Noch nichts gemessen – starte das Training oder rechne einfach los, die KI lernt bei jedem Stück mit.')]),
     el('div', { class: 'ln-acts' },
-      el('button', { type: 'button', class: 'btn small glow', disabled: !h.ai_ready, onclick: train('fast') }, 'Training „Schnell“'),
-      el('button', { type: 'button', class: 'btn small', disabled: !h.ai_ready, onclick: train('good') }, 'Training „Beste Qualität“'),
+      el('button', { type: 'button', class: 'btn small glow', disabled: !h.ai_ready, onclick: train(S.settings.aiQual || 'fast') }, 'Training starten'),
+      el('button', { type: 'button', class: 'btn small', onclick: async () => { const f = await api('/api/hw/refresh', {}); $('#setBody').textContent = ''; drawHw($('#setBody'), f) } }, 'Hardware neu erkennen'),
       el('button', { type: 'button', class: 'btn small', onclick: async () => { if (!await ask('Gedächtnis zurücksetzen?', 'Alle gemessenen Tempo-Werte und gelernten Qualitäts-Vorlieben werden gelöscht.', 'Zurücksetzen')) return; const f = await api('/api/ai/tuner-reset', {}); $('#setBody').textContent = ''; drawHw($('#setBody'), f) } }, 'Zurücksetzen')),
-    el('p', { class: 'hint' }, 'Training: probiert jede Einstellung einmal mit einem echten Stück aus (dauert je nach Karte ca. 5–20 Minuten). Danach nimmt die KI immer die schnellste, die sicher läuft.'), tp));
+    el('p', { class: 'hint' }, 'Dauert je nach Karte ca. 5–20 Minuten. Bewertungen der Varianten (Sterne) siehst du unter „Das hat die KI gelernt“.'), tp));
 }
 async function drawMem(box) {
   const st = await api('/api/settings'); const ai = st.ai;

@@ -20,6 +20,7 @@ Ablauf
 """
 import base64
 import tuner as tunerlib
+import hwinfo
 import queue
 import socket
 import hashlib
@@ -44,10 +45,11 @@ GEN_FPS = 24                       # Wan 2.2 TI2V 5B arbeitet mit 24 Bildern/s
 XFADE = 12                         # Bilder für weiche Überblendung (0,5 s)
 ANCHOR = 6                         # alle 6 Stücke (~25–30 s) zurück zum Original
 QUALITIES = {                      # Kurzname: (lange Seite, kurze Seite, Bilder je Stück, Schätzung Sekunden je Stück)
+    'turbo': (640, 352, 97, 140),  # 1.11.0: sehr schnell, danach KI-Upscaler (unter 832×480 wird die KI weicher)
     'fast': (832, 480, 97, 240),
     'good': (1280, 704, 121, 900),
 }
-QUALITY_NAMES = {'fast': 'Schnell (832 × 480)', 'good': 'Beste Qualität (1280 × 704)'}
+QUALITY_NAMES = {'turbo': 'Sehr schnell (640 × 352)', 'fast': 'Schnell (832 × 480)', 'good': 'Beste Qualität (1280 × 704)'}
 MODEL = {
     'steps': 4, 'cfg': 1.0, 'sampler': 'euler', 'flow_shift': 5.0,
     'files': [  # Schlüssel, Hugging-Face-Repo, Dateimuster, ungefähre Größe (GB)
@@ -122,6 +124,8 @@ def plan(length_s, frames):
     return segs
 
 
+RAM_MSG = ('Der Arbeitsspeicher war voll – Windows hat die KI beendet. Bitte große Programme (Browser, Spiele) schließen '
+           'und „Aufräumen & starten“ benutzen.')
 OOM = re.compile(r'out of memory|ErrorOutOfDeviceMemory|failed to allocate', re.I)
 NOPROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -134,6 +138,17 @@ class SdServer:
         self.proc = None
         self.port = 0
         self.last = time.time()
+        self.ram_low = 0.0                 # 1.11.0: letzter Zeitpunkt mit < 1 GB freiem Arbeitsspeicher
+
+    def _watch_ram(self):
+        while self.alive():
+            if (hwinfo.ram_gb()[1] or 99) < 1.0:
+                self.ram_low = time.time()
+            time.sleep(0.5)
+
+    def ram_crash(self):
+        """War der Arbeitsspeicher kurz vor dem Absturz voll?"""
+        return time.time() - self.ram_low < 15 or bool(re.search(r'bad_alloc|not enough memory|cannot allocate', self.tail(), re.I))
 
     def touch(self):
         self.last = time.time()
@@ -164,6 +179,7 @@ class SdServer:
                                      stdout=lf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=self.nw,
                                      cwd=str(self.log.parent))
         lf.close()
+        threading.Thread(target=self._watch_ram, daemon=True).start()
         t0 = time.time()
         while time.time() - t0 < timeout:
             if job.get('cancel'):
@@ -172,6 +188,8 @@ class SdServer:
                 t = self.tail()
                 if OOM.search(t):
                     raise RuntimeError('Der Grafikspeicher reicht nicht.')
+                if self.ram_crash():
+                    raise RuntimeError(RAM_MSG)
                 raise RuntimeError('KI-Dienst beendet: ' + (t.strip().splitlines() or [''])[-1][:200])
             try:
                 self._req('/sdcpp/v1/capabilities', timeout=3)
@@ -190,6 +208,8 @@ class SdServer:
                 time.sleep(0.25)
             if OOM.search(self.tail()):
                 raise RuntimeError('Der Grafikspeicher reicht nicht – bitte „Schnell“ wählen oder andere Programme schließen.')
+            if self.ram_crash():
+                raise RuntimeError(RAM_MSG)
             raise RuntimeError('Die KI hat den Auftrag nicht angenommen: %s' % ex)
         jid = r.get('id')
         if not jid:
@@ -206,6 +226,8 @@ class SdServer:
                     t = self.tail()
                     if OOM.search(t):
                         raise RuntimeError('Der Grafikspeicher reicht nicht – bitte „Schnell“ wählen oder andere Programme schließen.')
+                    if self.ram_crash():
+                        raise RuntimeError(RAM_MSG)
                     raise RuntimeError('Die KI wurde unerwartet beendet.')
                 try:
                     st = self._req('/sdcpp/v1/jobs/' + jid, timeout=30)
@@ -255,6 +277,7 @@ class AIVideo:
         self.dl = {'state': 'idle', 'percent': 0, 'error': '', 'done_gb': 0.0, 'total_gb': 0.0}
         self.jobs = {}
         self.lock = threading.Lock()          # nur eine KI-Rechnung gleichzeitig
+        self.blocker = lambda: False          # 1.11.0: vom Programm gesetzt (normale Umwandlung läuft?)
         self._devices = None
         self.speed_file = self.dir / 'speed.json'
         self.upscaler = None                 # wird vom Programm gesetzt (upscale.Upscaler)
@@ -381,7 +404,7 @@ class AIVideo:
                 pass
         return {}
 
-    def start_training(self, quality='fast'):
+    def start_training(self, quality='fast', devices=()):
         """Tempo-Training: jedes Rezept einmal mit einem echten Stück (Größe der Qualität, 33 Bilder) messen."""
         if not self.ready():
             raise RuntimeError('Für das Training muss das KI-Video-Paket installiert sein.')
@@ -389,10 +412,10 @@ class AIVideo:
         job = {'id': jid, 'kind': 'bench', 'state': 'wartet', 'percent': 0, 'error': '', 'note': '', 'result': None,
                'cancel': False, 'proc': None, 'started': time.time()}
         self.jobs[jid] = job
-        threading.Thread(target=self._train, args=(job, quality), daemon=True).start()
+        threading.Thread(target=self._train, args=(job, quality, list(devices)), daemon=True).start()
         return jid
 
-    def _train(self, job, quality):
+    def _train(self, job, quality, devices=()):
         with self.lock:
             job['state'] = 'läuft'
             hw = dict(self.hw)
@@ -409,21 +432,50 @@ class AIVideo:
                     cv2.circle(img, (W // 2, H // 2), H // 3, (150, 190, 235), -1)
                     cv2.GaussianBlur(img, (0, 0), 3, dst=img)
                     cv2.imencode('.png', img)[1].tofile(str(init))
+                # 1.11.0 (ersetzt den Schnelltest): bei mehreren Grafikkarten zuerst jede Karte messen, dann die schnellste nehmen
+                gpus = {}
+                devs = [x for x in devices if x] if len(devices) > 1 else []
+                steps = len(devs) + len(self.tuner.candidates(hw.get('vendor') or 'amd', float(hw.get('vram') or 0), gen))
+                for k, dev in enumerate(devs):
+                    if job['cancel']:
+                        raise RuntimeError('abgebrochen')
+                    job['note'] = 'Grafikkarte %d von %d wird gemessen …' % (k + 1, len(devs))
+                    if self.server:
+                        self.server.stop()
+                        self.server = None
+                    h2 = dict(hw, gen=dev, recipe='standard')
+                    try:
+                        self._run_sd(init, d / 'f', 'gentle motion, calm', 1, W, H, 9, job, k * 100 // steps, k * 100 // steps, hw=h2)
+                        t0 = time.time()
+                        self._run_sd(init, d / 'f', 'gentle motion, hair moving in the wind', 2, W, H, 33, job, k * 100 // steps, (k + 1) * 100 // steps, hw=h2)
+                        gpus[dev] = round((time.time() - t0) / 33, 3)
+                        self.tuner.record(dev, quality, 'standard', sec_per_frame=gpus[dev])
+                    except RuntimeError as ex:
+                        if job['cancel']:
+                            raise
+                        gpus[dev] = None
+                if gpus and any(gpus.values()):
+                    gen = min((v, k) for k, v in gpus.items() if v)[1]
+                    hw['gen'] = gen
                 cands = self.tuner.candidates(hw.get('vendor') or 'amd', float(hw.get('vram') or 0), gen)
+                off = len(devs)
                 for n, rid in enumerate(cands):
                     if job['cancel']:
                         raise RuntimeError('abgebrochen')
-                    job['note'] = 'Training %d von %d: %s' % (n + 1, len(cands), tunerlib.RECIPES[rid]['name'])
+                    job['note'] = 'Einstellung %d von %d: %s' % (n + 1, len(cands), tunerlib.RECIPES[rid]['name'])
+                    if rid == 'standard' and gpus.get(gen):
+                        res[rid] = gpus[gen]                # schon beim Kartenvergleich gemessen
+                        continue
+                    a0, a1 = (off + n) * 100 // steps, (off + n + 1) * 100 // steps
                     if self.server:
                         self.server.stop()
                         self.server = None
                     h2 = dict(hw, recipe=rid)
                     try:
                         # erst laden (kurzes Stück, nicht gemessen), dann messen
-                        self._run_sd(init, d / 'f', 'gentle motion, calm', 1, W, H, 9, job, n * 100 // len(cands), n * 100 // len(cands), hw=h2)
+                        self._run_sd(init, d / 'f', 'gentle motion, calm', 1, W, H, 9, job, a0, a0, hw=h2)
                         t0 = time.time()
-                        self._run_sd(init, d / 'f', 'gentle motion, hair moving in the wind', 2, W, H, 33, job,
-                                     n * 100 // len(cands), (n + 1) * 100 // len(cands), hw=h2)
+                        self._run_sd(init, d / 'f', 'gentle motion, hair moving in the wind', 2, W, H, 33, job, a0, a1, hw=h2)
                         spf = (time.time() - t0) / 33
                         if self.server is None:      # sd-cli: Ladezeit steckt mit drin -> nur grob
                             spf *= 0.6
@@ -435,14 +487,15 @@ class AIVideo:
                         oom = 'Grafikspeicher' in str(ex)
                         self.tuner.record(gen, quality, rid, oom=oom, fail=not oom)
                         res[rid] = 'Speicher reicht nicht' if oom else 'Fehler'
-                    job['percent'] = (n + 1) * 100 // len(cands)
+                    job['percent'] = (off + n + 1) * 100 // steps
                 if self.server:
                     self.server.stop()
                     self.server = None
                 self.tuner.mark_trained(gen)
                 shutil.rmtree(d, ignore_errors=True)
                 best = self.tuner.best(gen, quality, hw.get('vendor') or 'amd', float(hw.get('vram') or 0))
-                job.update(state='fertig', percent=100, note='', result={'recipes': res, 'best': best, 'best_name': tunerlib.RECIPES[best]['name']})
+                job.update(state='fertig', percent=100, note='', result={'recipes': res, 'best': best, 'gpus': gpus, 'gen': gen,
+                                                                        'best_name': tunerlib.RECIPES[best]['name']})
             except Exception as ex:  # noqa: BLE001
                 job.update(state='abgebrochen' if job['cancel'] else 'fehler', error=str(ex), result={'recipes': res})
 
@@ -524,7 +577,8 @@ class AIVideo:
         f = {k: v.resolve() for k, v in self.files().items()}
         return ['--diffusion-model', str(f['diffusion']), '--vae', str(f['vae']), '--t5xxl', str(f['t5']),
                 '--cfg-scale', str(MODEL['cfg']), '--sampling-method', MODEL['sampler'], '--steps', str(MODEL['steps']),
-                '--flow-shift', str(MODEL['flow_shift']), '--fps', str(GEN_FPS), '--vae-tiling']
+                '--flow-shift', str(MODEL['flow_shift']), '--fps', str(GEN_FPS), '--vae-tiling',
+                '--mmap']        # 1.11.0: Modelle einblenden statt kopieren -> Text-Teil belegt ~3 GB weniger festen Arbeitsspeicher
 
     def _server_for(self, job, hw=None):
         """Geladene KI holen (oder starten). None = Server nicht nutzbar -> sd-cli."""
@@ -544,6 +598,8 @@ class AIVideo:
                 sv.stop()
                 if job.get('cancel'):
                     raise RuntimeError('abgebrochen')
+                if str(ex) == RAM_MSG:
+                    raise                                  # Arbeitsspeicher voll: nicht still auf sd-cli ausweichen
                 self.server_error = str(ex)
                 return None
             finally:
@@ -586,6 +642,7 @@ class AIVideo:
             pr = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                   creationflags=self.nw, cwd=str(out_dir))
             job['proc'] = pr
+            ram_min = 99.0
             buf, phase = b'', 0
             while True:
                 ch = pr.stdout.read(256)
@@ -610,6 +667,7 @@ class AIVideo:
                         job['percent'] = p0 + 1
                 if job.get('cancel'):
                     pr.kill()
+                ram_min = min(ram_min, hwinfo.ram_gb()[1] or 99.0)
             pr.wait()
             job['proc'] = None
         if job.get('cancel'):
@@ -619,6 +677,8 @@ class AIVideo:
             tail = log.read_bytes()[-1500:].decode('utf-8', 'replace')
             if re.search(r'out of memory|ErrorOutOfDeviceMemory|failed to allocate', tail, re.I):
                 raise RuntimeError('Der Grafikspeicher reicht nicht – bitte „Schnell“ wählen oder andere Programme schließen.')
+            if ram_min < 1.0 or re.search(r'bad_alloc|not enough memory|cannot allocate', tail, re.I):
+                raise RuntimeError(RAM_MSG)
             raise RuntimeError('Die KI konnte das Stück nicht berechnen. ' + tail.strip().splitlines()[-1][:200] if tail.strip() else 'Die KI wurde unerwartet beendet.')
         return imgs, time.time() - t0
 
@@ -706,6 +766,11 @@ class AIVideo:
         if idx == 0:
             shutil.copyfile(imgs[0], d / 'first.png')
         self._encode_frames(imgs, seg)
+        try:                                       # 1.11.0: Live-Vorschau – zuletzt fertiges Stück
+            job['preview'] = seg.relative_to(self.jobs_dir).as_posix()
+            job['preview_n'] = idx + 1
+        except ValueError:
+            pass
         try:
             shutil.copyfile(tmp / 'sd.log', d / ('segment-%03d.log' % idx))
         except OSError:
@@ -749,62 +814,6 @@ class AIVideo:
         threading.Thread(target=self._job, args=(job, Path(still_png), opts), daemon=True).start()
         return jid
 
-    def start_bench(self, devices, upscaler_devs=()):
-        """Schnelltest der Hardware: kleines Stück (256 × 160, 9 Bilder) je Grafikkarte, Upscaler je Karte."""
-        if not self.ready():
-            raise RuntimeError('Für den Schnelltest muss das KI-Video-Paket installiert sein.')
-        jid = hashlib.sha1(('%s bench' % time.time()).encode()).hexdigest()[:10]
-        job = {'id': jid, 'kind': 'bench', 'state': 'wartet', 'percent': 0, 'error': '', 'note': '', 'result': None,
-               'cancel': False, 'proc': None, 'started': time.time()}
-        self.jobs[jid] = job
-        threading.Thread(target=self._bench, args=(job, list(devices), list(upscaler_devs)), daemon=True).start()
-        return jid
-
-    def _bench(self, job, devices, updevs):
-        with self.lock:
-            job['state'] = 'läuft'
-            res = {'gen': {}, 'up': {}, 'load': {}}
-            try:
-                d = (self.dir / 'bench').resolve()
-                d.mkdir(parents=True, exist_ok=True)
-                init = d / 'start.png'
-                img = np.zeros((160, 256, 3), np.uint8)
-                img[:] = (90, 40, 150)
-                if cv2 is not None:
-                    cv2.circle(img, (128, 80), 50, (160, 180, 230), -1)
-                    cv2.imencode('.png', img)[1].tofile(str(init))
-                steps = len(devices) + len(updevs)
-                for n, dev in enumerate(devices):
-                    job['note'] = 'KI-Test auf %s …' % dev
-                    hw = dict(self.hw, gen=dev, te='cpu')
-                    t0 = time.time()
-                    self._run_sd(init, d / 'f', 'a calm portrait, gentle motion', 1, 256, 160, 9, job,
-                                 n * 100 // steps, (n + 1) * 100 // steps, hw=hw)
-                    total = time.time() - t0
-                    t1 = time.time()                       # zweites Mal: Modell ist geladen -> reine Rechenzeit
-                    if self.server is not None:
-                        self._run_sd(init, d / 'f', 'a calm portrait, gentle motion', 2, 256, 160, 9, job,
-                                     (n + 1) * 100 // steps, (n + 1) * 100 // steps, hw=hw)
-                        res['gen'][dev] = round(time.time() - t1, 1)
-                        res['load'][dev] = round(max(0, total - res['gen'][dev]), 1)
-                    else:
-                        res['gen'][dev] = round(total, 1)
-                    if self.server:
-                        self.server.stop()
-                        self.server = None
-                for k, u in enumerate(updevs):
-                    if job['cancel']:
-                        raise RuntimeError('abgebrochen')
-                    job['note'] = 'Upscaler-Test …'
-                    r = self.upscaler.bench(u) if self.upscaler is not None and self.upscaler.available() else None
-                    if r:
-                        res['up'][str(u)] = r['sec']
-                    job['percent'] = (len(devices) + k + 1) * 100 // steps
-                shutil.rmtree(d, ignore_errors=True)
-                job.update(state='fertig', percent=100, note='', result=res)
-            except Exception as ex:  # noqa: BLE001
-                job.update(state='abgebrochen' if job['cancel'] else 'fehler', error=str(ex), result=res)
-
     def cancel(self, jid):
         j = self.jobs.get(jid)
         if j:
@@ -845,6 +854,11 @@ class AIVideo:
         return init
 
     def _job(self, job, still_png, o):
+        # 1.11.0: läuft gerade eine normale Video-Umwandlung, wartet die KI (nicht beides gleichzeitig rechnen)
+        while self.blocker() and not job['cancel']:
+            job['note'] = 'Wartet, bis die Video-Umwandlung fertig ist …'
+            time.sleep(1)
+        job['note'] = ''
         with self.lock:
             self.active_rid = None                    # pro Auftrag neu das beste Rezept wählen
             if job['cancel']:

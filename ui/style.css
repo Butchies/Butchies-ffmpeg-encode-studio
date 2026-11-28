@@ -705,9 +705,6 @@ body.full .grips{display:none}
 .ai-result video{width:180px;max-height:120px;border-radius:8px;background:#000;object-fit:contain}
 .ai-result .tx{flex:1;min-width:180px;font-size:13px}
 .ai-result .tx small{display:block;color:var(--muted);margin-top:3px}
-.fxtile.ai-tile .fx-ic{font-size:20px;line-height:24px}
-.fxtile.ai-tile em{position:absolute;top:-7px;right:-4px;font-style:normal;font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:99px;color:var(--on);background:linear-gradient(110deg,var(--a),var(--b))}
-.fxtile.ai-tile{position:relative}
 
 /* ---------- KI-Video: Bewertung + eigenes Fenster (2. Monitor) ---------- */
 .ai-up{display:flex;gap:10px;align-items:flex-start;margin-top:10px;cursor:pointer}
@@ -781,3 +778,17 @@ body.kiwin .brand small{display:none}
 .set-row + .set-row{margin-top:12px}
 .ai-var{position:relative}
 .ai-tip{position:absolute;top:6px;left:6px;z-index:2;padding:2px 8px;border-radius:99px;font-size:10.5px;color:var(--on);background:linear-gradient(90deg,var(--a),var(--b));pointer-events:none}
+
+/* 1.11.0: Live-Vorschau, Mini-Anzeige, Speicher-Dialog */
+.ai-live{display:block;width:100%;max-height:220px;margin-top:8px;border-radius:10px;background:#000;object-fit:contain}
+.ai-mini{display:flex;gap:10px;align-items:center;width:100%;margin-top:10px;padding:8px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);cursor:pointer;text-align:left}
+.ai-mini:hover{border-color:var(--a)}
+.ai-mini video{width:112px;height:63px;border-radius:8px;background:#000;object-fit:cover;flex:none}
+.ai-mini > span{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.ai-mini .bar{display:block;height:6px;border-radius:9px;background:var(--panel);overflow:hidden}
+.ai-mini .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--a),var(--b));transition:width .4s}
+.ai-mini small{font-size:12px;color:var(--muted)}
+#ramDlg .dlg{height:min(520px,calc(100vh - 40px));display:flex;flex-direction:column}
+.ram-body{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.ram-list{display:grid;gap:6px}
+.ram-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:var(--panel2);border:1px solid var(--line)}
