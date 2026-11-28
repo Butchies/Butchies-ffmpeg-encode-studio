@@ -1,0 +1,142 @@
+Geräte: [{'name': 'CPU', 'desc': 'AMD EPYC 7763 64-Core Processor', 'gpu': False}]
+KI-Dienst (sd-server): D:\a\Butchies-ffmpeg-encode-studio\Butchies-ffmpeg-encode-studio\sdcpp\sd-server.exe
+Hardware-Analyse: {"cpu": "AMD EPYC 7763 64-Core Processor", "cores": 4, "ram": 16.0, "ram_free": 12.5, "disk_free": 138.6, "gpus": [], "vulkan": [{"name": "CPU", "desc": "AMD EPYC 7763 64-Core Processor", "gpu": false}], "rec": {"gen": "cpu", "gen_name": "Prozessor", "te": "cpu", "up": -1, "up_name": "Prozessor", "parallel": false, "quality": "fast", "decode_frames": 1}, "notes": ["Keine passende Grafikkarte für die KI gefunden – sie rechnet auf dem Prozessor (sehr langsam)."], "bench": {}, "platform": "win32"}
+Download 100 % (0.0 GB) 
+Download: done  in 5 s
+Dateien: {'diffusion': ('Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf', 3.2), 't5': ('umt5-xxl-encoder-Q4_K_M.gguf', 3.4), 'vae': ('Wan2.2_VAE.safetensors', 1.31)}
+  variants 0 % 
+  variants 0 % Variante 1 von 1 wird berechnet …
+  variants 0 % Variante 1 von 1 wird berechnet …
+  variants 0 % Variante 1 von 1 wird berechnet …
+  variants 0 % Variante 1 von 1 wird berechnet …
+  variants 0 % Variante 1 von 1 wird berechnet …
+  variants 0 % Variante 1 von 1 wird berechnet …
+  variants 0 % Variante 1 von 1 wird berechnet …
+  variants 0 % Variante 1 von 1 wird berechnet …
+  variants 0 % Variante 1 von 1 wird berechnet …
+  variants 25 % Variante 1 von 1 wird berechnet …
+  variants 40 % Variante 1 von 1 wird berechnet …
+  variants 40 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+  variants 54 % Variante 1 von 1 wird berechnet …
+Variante: fertig  in 205 s · Weg: sd-server 
+--- sd-cli Protokoll (Auszug) ---
+    [I] VAE weights: 1344.24 MiB --- model_runtime.cpp:483
+    [I] memory-mapped 30 tensors in 1 files (282.43 MB), taking 0.00s --- model_loader.cpp:1099
+    [I] loading 82/196 tensors from D:\a\Butchies-ffmpeg-encode-studio\Butchies-ffmpeg-encode-studio\aitest\home\aivideo\models\Wan2.2_VAE.safetensors --- model_loader.cpp:1184
+    |##################################################| 82/82 -   0.24MB/s[K
+    [I] loading tensors completed, taking 0.20s (read: 0.00s, memcpy: 0.00s, convert: 0.00s, copy_to_backend: 0.00s) --- model_loader.cpp:1456
+    [I] memory-mapped 242 tensors in 1 files (3479.75 MB), taking 0.00s --- model_loader.cpp:1099
+    [I] loading 242/242 tensors from D:\a\Butchies-ffmpeg-encode-studio\Butchies-ffmpeg-encode-studio\aitest\home\aivideo\models\umt5-xxl-encoder-Q4_K_M.gguf --- model_loader.cpp:1184
+    |##################################################| 242/242 -   0.00MB/s[K
+    [I] loading tensors completed, taking 0.20s (read: 0.00s, memcpy: 0.00s, convert: 0.00s, copy_to_backend: 0.00s) --- model_loader.cpp:1456
+    [I] computing condition graph completed, taking 31176 ms --- conditioner.hpp:1636
+    [I] sampling started: method=euler, steps=4 --- sampling.cpp:60
+    [I] memory-mapped 824 tensors in 1 files (3276.36 MB), taking 0.00s --- model_loader.cpp:1099
+    [I] loading 825/825 tensors from D:\a\Butchies-ffmpeg-encode-studio\Butchies-ffmpeg-encode-studio\aitest\home\aivideo\models\Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf --- model_loader.cpp:1184
+    |##################################################| 825/825 -  10.42MB/s[K
+    [I] loading tensors completed, taking 0.22s (read: 0.00s, memcpy: 0.00s, convert: 0.00s, copy_to_backend: 0.00s) --- model_loader.cpp:1456
+    [I] sampling completed, taking 34.24s --- sampling.cpp:99
+    [I] memory-mapped 40 tensors in 1 files (1058.57 MB), taking 0.00s --- model_loader.cpp:1099
+    [I] loading 110/196 tensors from D:\a\Butchies-ffmpeg-encode-studio\Butchies-ffmpeg-encode-studio\aitest\home\aivideo\models\Wan2.2_VAE.safetensors --- model_loader.cpp:1184
+    |##################################################| 110/110 -   0.51MB/s[K
+    [I] loading tensors completed, taking 0.21s (read: 0.00s, memcpy: 0.00s, convert: 0.00s, copy_to_backend: 0.00s) --- model_loader.cpp:1456
+    [I] computing vae decode graph completed, taking 130.16s --- vae.hpp:372
+Plan: [(0, True), (1, False), (2, True)]
+  full 0 % 
+  full 0 % Stück 2 von 3
+  full 0 % Stück 2 von 3
+  full 39 % Stück 2 von 3
+  full 39 % Stück 2 von 3
+  full 43 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 2 von 3
+  full 48 % Stück 3 von 3
+  full 48 % Stück 3 von 3
+  full 71 % Stück 3 von 3
+  full 71 % Stück 3 von 3
+  full 75 % Stück 3 von 3
+  full 75 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+  full 80 % Stück 3 von 3
+Volle Länge: fertig  {'clip': '0123456789abcdef/seed-11/ki-video-1s.mp4', 'seconds': 0.96, 'key': '0123456789abcdef', 'seed': 11} in 335 s
+Volle Länge über: sd-server (Modell blieb geladen) 
+Länge Ergebnis: 0.96 s · Tempo je Stück: {'test': 178.8}
+Bilder: 23 · Ähnlichkeit erstes Bild/Start: 0.999 · Bewegung je Bild: 25.27 · kleinste Streuung: 56.4
